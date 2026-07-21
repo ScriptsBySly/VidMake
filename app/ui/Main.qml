@@ -145,6 +145,19 @@ ApplicationWindow {
         return matches[index].id || ""
     }
 
+    function maskLayerAtForVisual(sourcePath, index) {
+        var matches = maskLayersForVisual(sourcePath)
+        if (index < 0 || index >= matches.length) {
+            return null
+        }
+        return matches[index]
+    }
+
+    function selectedMaskHasCutout(sourcePath, index) {
+        var layer = maskLayerAtForVisual(sourcePath, index)
+        return layer !== null && (layer.cutout_path || "").length > 0
+    }
+
     function addAudioKeyframeLayer(layerJson) {
         var layer = JSON.parse(layerJson)
         var layers = audioKeyframeLayers.slice(0)
@@ -630,6 +643,18 @@ ApplicationWindow {
                 }
 
                 Text {
+                    Layout.fillWidth: true
+                    text: "Re-analyze this mask to make only the keyed pixels participate in the effect."
+                    color: "#b45309"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    visible: editMaskMode.currentIndex === 1
+                        && editMaskLayer.count > 0
+                        && !selectedMaskHasCutout(editingLayer.source_visual_path || "", editMaskLayer.currentIndex)
+                }
+
+                Text {
                     text: "Trigger every " + editTriggerInterval.value.toFixed(2) + " seconds"
                     color: Theme.text
                     font.family: Theme.fontFamily
@@ -779,6 +804,18 @@ ApplicationWindow {
                 textRole: "name"
                 enabled: count > 0
                 visible: zoomMaskMode.currentIndex === 1
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Re-analyze this mask to make only the keyed pixels participate in the effect."
+                color: "#b45309"
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                visible: zoomMaskMode.currentIndex === 1
+                    && zoomMaskLayer.count > 0
+                    && !selectedMaskHasCutout(analysisVisualPath, zoomMaskLayer.currentIndex)
             }
 
             Text {

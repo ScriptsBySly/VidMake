@@ -45,12 +45,17 @@ Panel {
     readonly property bool zoomBlurMaskMode: activeZoomBlurEffect && (activeZoomBlurEffect.mask_mode || "none") === "mask"
     readonly property var activeZoomBlurMaskLayer: maskLayerById(zoomBlurMaskMode ? activeZoomBlurEffect.mask_layer_id || "" : "")
     readonly property bool zoomBlurUsesMask: activeZoomBlurMaskLayer !== null
-    readonly property string zoomBlurCutoutPath: zoomBlurUsesMask ? activeZoomBlurMaskLayer.cutout_path || activeZoomBlurMaskLayer.preview_path || "" : ""
+    readonly property string zoomBlurCutoutPath: zoomBlurUsesMask ? activeZoomBlurMaskLayer.cutout_path || "" : ""
     readonly property string zoomBlurCutoutUrl: zoomBlurCutoutPath.length > 0 ? pathToUrl(zoomBlurCutoutPath) : ""
+    readonly property bool zoomBlurHasCutout: zoomBlurCutoutUrl.length > 0
     readonly property real zoomBlurOriginX: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_x || 0.5 : 0.5
     readonly property real zoomBlurOriginY: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_y || 0.5 : 0.5
+    readonly property real zoomBlurMaskX: maskBound("min_x", 0.0) * frame.width
+    readonly property real zoomBlurMaskY: maskBound("min_y", 0.0) * frame.height
+    readonly property real zoomBlurMaskWidth: zoomBlurUsesMask ? Math.max(12, (maskBound("max_x", 1.0) - maskBound("min_x", 0.0)) * frame.width) : frame.width
+    readonly property real zoomBlurMaskHeight: zoomBlurUsesMask ? Math.max(12, (maskBound("max_y", 1.0) - maskBound("min_y", 0.0)) * frame.height) : frame.height
     readonly property real zoomBlurScale: activeZoomBlurEffect && !zoomBlurMaskMode ? 1.0 + (activeZoomBlurEffect.zoom_amount - 1.0) * zoomBlurPulse : 1.0
-    readonly property real zoomBlurOpacity: activeZoomBlurEffect && (!zoomBlurMaskMode || (zoomBlurUsesMask && zoomBlurCutoutUrl.length > 0)) ? activeZoomBlurEffect.blur_strength * zoomBlurPulse : 0.0
+    readonly property real zoomBlurOpacity: activeZoomBlurEffect && (!zoomBlurMaskMode || zoomBlurHasCutout) ? activeZoomBlurEffect.blur_strength * zoomBlurPulse : 0.0
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -525,10 +530,10 @@ Panel {
                     opacity: Math.min(1.0, 0.38 + root.zoomBlurOpacity)
 
                     Repeater {
-                        model: 4
+                        model: root.zoomBlurHasCutout ? 5 : 0
 
                         Image {
-                            id: maskCutoutBurst
+                            id: maskedFrameBurst
                             required property int index
                             anchors.fill: parent
                             anchors.margins: 12
@@ -536,15 +541,16 @@ Panel {
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             cache: false
-                            opacity: Math.max(0.0, 0.42 - index * 0.1) * root.zoomBlurPulse
+                            opacity: Math.max(0.0, 0.55 - index * 0.09) * root.zoomBlurPulse
                             transform: Scale {
-                                origin.x: maskCutoutBurst.width * root.zoomBlurOriginX
-                                origin.y: maskCutoutBurst.height * root.zoomBlurOriginY
-                                xScale: root.zoomBlurBurstScale(maskCutoutBurst.index)
-                                yScale: root.zoomBlurBurstScale(maskCutoutBurst.index)
+                                origin.x: maskedFrameBurst.width * root.zoomBlurOriginX
+                                origin.y: maskedFrameBurst.height * root.zoomBlurOriginY
+                                xScale: root.zoomBlurBurstScale(maskedFrameBurst.index)
+                                yScale: root.zoomBlurBurstScale(maskedFrameBurst.index)
                             }
                         }
                     }
+
                 }
 
                 Text {
