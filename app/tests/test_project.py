@@ -158,6 +158,32 @@ def test_validate_project_preserves_color_spread_effect_layers() -> None:
     assert validated["effect_layers"][0]["color_2"] == "#ff4fd8"
 
 
+def test_validate_project_preserves_color_spread_keyframe_trigger() -> None:
+    project = empty_project()
+    project["effect_layers"] = [
+        {
+            "id": "effect-2",
+            "name": "Color spread",
+            "plugin": "builtin.color_spread",
+            "source_visual_name": "clip.mp4",
+            "source_visual_path": "H:/media/clip.mp4",
+            "trigger_mode": "keyframes",
+            "keyframe_layer_id": "audio-keyframes-1",
+            "mask_mode": "mask",
+            "mask_layer_id": "mask-1",
+            "trigger_interval_seconds": 0.75,
+            "spread_duration_seconds": 0.9,
+            "color_1": "#00c8ff",
+            "color_2": "#ff4fd8",
+        }
+    ]
+
+    validated = validate_project(project)
+
+    assert validated["effect_layers"][0]["trigger_mode"] == "keyframes"
+    assert validated["effect_layers"][0]["keyframe_layer_id"] == "audio-keyframes-1"
+
+
 def test_validate_project_preserves_chroma_key_remove_effect_layers() -> None:
     project = empty_project()
     project["effect_layers"] = [

@@ -259,7 +259,7 @@ def validate_project(data: Any) -> dict[str, Any]:
         trigger_mode = str(layer.get("trigger_mode", "interval"))
         if trigger_mode not in {"interval", "keyframes"}:
             raise ValueError(f"Effect layer #{index + 1} has an invalid trigger mode.")
-        if plugin in {"builtin.color_spread", "builtin.chroma_key_remove"}:
+        if plugin == "builtin.chroma_key_remove":
             trigger_mode = "interval"
         keyframe_layer_id = str(layer.get("keyframe_layer_id", ""))
         if trigger_mode == "keyframes" and not keyframe_layer_id:

@@ -322,6 +322,12 @@ ApplicationWindow {
             statusMessage = "Select or import a visual asset before adding an effect"
             return
         }
+        var triggerMode = colorSpreadTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
+        var keyframeLayerId = triggerMode === "keyframes" ? audioKeyframeLayerIdAt(colorSpreadKeyframeLayer.currentIndex) : ""
+        if (triggerMode === "keyframes" && keyframeLayerId.length === 0) {
+            statusMessage = "Create an audio keyframe layer before using beat keyframes"
+            return
+        }
         var maskLayerId = maskLayerIdAtForVisual(analysisVisualPath, colorSpreadMaskLayer.currentIndex)
         if (maskLayerId.length === 0) {
             statusMessage = "Create a mask layer for this visual before adding color spread"
@@ -341,8 +347,8 @@ ApplicationWindow {
             "plugin": "builtin.color_spread",
             "source_visual_name": analysisVisualName,
             "source_visual_path": analysisVisualPath,
-            "trigger_mode": "interval",
-            "keyframe_layer_id": "",
+            "trigger_mode": triggerMode,
+            "keyframe_layer_id": keyframeLayerId,
             "mask_mode": "mask",
             "mask_layer_id": maskLayerId,
             "trigger_interval_seconds": colorSpreadInterval.value,
@@ -490,7 +496,7 @@ ApplicationWindow {
             var isColorSpread = layer.plugin === "builtin.color_spread"
             var isChromaRemove = layer.plugin === "builtin.chroma_key_remove"
             var isMaskOnlyEffect = isColorSpread || isChromaRemove
-            var editMode = !isMaskOnlyEffect && editTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
+            var editMode = !isChromaRemove && editTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
             var editKeyframeLayerId = editMode === "keyframes" ? audioKeyframeLayerIdAt(editKeyframeLayer.currentIndex) : ""
             if (editMode === "keyframes" && editKeyframeLayerId.length === 0) {
                 statusMessage = "Create an audio keyframe layer before using beat keyframes"
@@ -776,14 +782,14 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
+                    visible: editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 ComboBox {
                     id: editTriggerMode
                     Layout.fillWidth: true
                     model: ["Manual interval", "Beat keyframes"]
-                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
+                    visible: editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 Text {
@@ -791,7 +797,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 1
+                    visible: editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 1
                 }
 
                 ComboBox {
@@ -800,7 +806,7 @@ ApplicationWindow {
                     model: audioKeyframeLayers
                     textRole: "name"
                     enabled: audioKeyframeLayers.length > 0
-                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 1
+                    visible: editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 1
                 }
 
                 Text {
@@ -851,7 +857,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin === "builtin.color_spread" || (editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 0)
+                    visible: editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 0
                 }
 
                 Slider {
@@ -861,7 +867,7 @@ ApplicationWindow {
                     to: 10
                     value: 1
                     stepSize: 0.1
-                    visible: editingLayer.plugin === "builtin.color_spread" || (editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 0)
+                    visible: editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 0
                 }
 
                 Text {
@@ -1173,6 +1179,8 @@ ApplicationWindow {
         y: Math.round((window.height - height) / 2)
         onOpened: {
             colorSpreadName.text = "Color spread"
+            colorSpreadTriggerMode.currentIndex = 0
+            colorSpreadKeyframeLayer.currentIndex = audioKeyframeLayers.length > 0 ? 0 : -1
             colorSpreadMaskLayer.currentIndex = maskLayersForVisual(analysisVisualPath).length > 0 ? 0 : -1
             colorSpreadInterval.value = 1.0
             colorSpreadDuration.value = 0.8
@@ -1200,6 +1208,36 @@ ApplicationWindow {
                 color: Theme.text
                 font.family: Theme.fontFamily
                 placeholderText: "Effect name"
+            }
+
+            Text {
+                text: "Trigger source"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            ComboBox {
+                id: colorSpreadTriggerMode
+                Layout.fillWidth: true
+                model: ["Manual interval", "Beat keyframes"]
+            }
+
+            Text {
+                text: "Beat keyframe layer"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                visible: colorSpreadTriggerMode.currentIndex === 1
+            }
+
+            ComboBox {
+                id: colorSpreadKeyframeLayer
+                Layout.fillWidth: true
+                model: audioKeyframeLayers
+                textRole: "name"
+                enabled: audioKeyframeLayers.length > 0
+                visible: colorSpreadTriggerMode.currentIndex === 1
             }
 
             Text {
@@ -1233,6 +1271,7 @@ ApplicationWindow {
                 color: Theme.text
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
+                visible: colorSpreadTriggerMode.currentIndex === 0
             }
 
             Slider {
@@ -1242,6 +1281,7 @@ ApplicationWindow {
                 to: 10
                 value: 1
                 stepSize: 0.1
+                visible: colorSpreadTriggerMode.currentIndex === 0
             }
 
             Text {

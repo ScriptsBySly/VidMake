@@ -339,8 +339,28 @@ Panel {
         if (!effect || !activeColorSpreadMaskLayer) {
             return 0.0
         }
-        var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
         var durationMs = Math.max(50, effect.spread_duration_seconds * 1000.0)
+        if ((effect.trigger_mode || "interval") === "keyframes") {
+            var layer = audioKeyframeLayerById(effect.keyframe_layer_id || "")
+            if (!layer || !layer.keyframes || layer.keyframes.length === 0) {
+                return 0.0
+            }
+            var nowSeconds = currentPosition / 1000.0
+            var durationSeconds = durationMs / 1000.0
+            var latestDelta = -1.0
+            for (var i = 0; i < layer.keyframes.length; i++) {
+                var timeSeconds = layer.keyframes[i].time_seconds || 0.0
+                if (timeSeconds > nowSeconds) {
+                    break
+                }
+                var delta = nowSeconds - timeSeconds
+                if (delta <= durationSeconds) {
+                    latestDelta = delta
+                }
+            }
+            return latestDelta < 0.0 ? 0.0 : Math.max(0.0, Math.min(1.0, latestDelta / durationSeconds))
+        }
+        var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
         var phase = currentPosition % intervalMs
         if (phase > durationMs) {
             return 0.0
@@ -352,6 +372,21 @@ Panel {
         var effect = activeColorSpreadEffect
         if (!effect) {
             return "#00c8ff"
+        }
+        if ((effect.trigger_mode || "interval") === "keyframes") {
+            var layer = audioKeyframeLayerById(effect.keyframe_layer_id || "")
+            if (!layer || !layer.keyframes || layer.keyframes.length === 0) {
+                return effect.color_1 || "#00c8ff"
+            }
+            var nowSeconds = currentPosition / 1000.0
+            var firedCount = 0
+            for (var i = 0; i < layer.keyframes.length; i++) {
+                if ((layer.keyframes[i].time_seconds || 0.0) > nowSeconds) {
+                    break
+                }
+                firedCount += 1
+            }
+            return firedCount % 2 === 1 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
         }
         var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
         var cycle = Math.floor(currentPosition / intervalMs)
