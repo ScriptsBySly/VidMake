@@ -1091,6 +1091,56 @@ Panel {
                         }
                     }
 
+                    Item {
+                        anchors.fill: parent
+                        visible: root.colorSpreadReady && root.colorSpreadHasMaskImage && root.colorSpreadBursts.length > 0
+
+                        Repeater {
+                            model: root.colorSpreadBursts
+
+                            Item {
+                                id: colorSpreadBurst
+                                required property var modelData
+                                readonly property real burstProgress: modelData.progress || 0.0
+                                readonly property string burstColor: modelData.color || root.colorSpreadColor
+                                readonly property string burstMaskUrl: modelData.maskUrl || root.colorSpreadMaskUrl
+                                readonly property real burstOriginX: modelData.originX === undefined ? root.colorSpreadOriginX : modelData.originX
+                                readonly property real burstOriginY: modelData.originY === undefined ? root.colorSpreadOriginY : modelData.originY
+                                anchors.fill: parent
+
+                                Item {
+                                    id: colorSpreadSilhouette
+                                    anchors.fill: parent
+                                    opacity: 0.72
+                                    transform: Scale {
+                                        origin.x: colorSpreadSilhouette.width * colorSpreadBurst.burstOriginX
+                                        origin.y: colorSpreadSilhouette.height * colorSpreadBurst.burstOriginY
+                                        xScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
+                                        yScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
+                                    }
+
+                                    Image {
+                                        id: silhouetteMask
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        source: colorSpreadBurst.burstMaskUrl
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: false
+                                        cache: true
+                                        visible: false
+                                    }
+
+                                    ColorOverlay {
+                                        anchors.fill: silhouetteMask
+                                        source: silhouetteMask
+                                        color: colorSpreadBurst.burstColor
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+
                     Repeater {
                         model: root.compositionMode ? root.compositionVisualAssets : []
 
@@ -1162,56 +1212,6 @@ Panel {
                             font.family: Theme.fontFamily
                             font.pixelSize: 14
                             elide: Text.ElideMiddle
-                        }
-                    }
-                }
-
-                Item {
-                    anchors.fill: parent
-                    visible: root.colorSpreadReady && root.colorSpreadHasMaskImage && root.colorSpreadBursts.length > 0
-
-                    Repeater {
-                        model: root.colorSpreadBursts
-
-                        Item {
-                            id: colorSpreadBurst
-                            required property var modelData
-                            readonly property real burstProgress: modelData.progress || 0.0
-                            readonly property string burstColor: modelData.color || root.colorSpreadColor
-                            readonly property string burstMaskUrl: modelData.maskUrl || root.colorSpreadMaskUrl
-                            readonly property real burstOriginX: modelData.originX === undefined ? root.colorSpreadOriginX : modelData.originX
-                            readonly property real burstOriginY: modelData.originY === undefined ? root.colorSpreadOriginY : modelData.originY
-                            anchors.fill: parent
-
-                            Item {
-                                id: colorSpreadSilhouette
-                                anchors.fill: parent
-                                opacity: 0.72
-                                transform: Scale {
-                                    origin.x: colorSpreadSilhouette.width * colorSpreadBurst.burstOriginX
-                                    origin.y: colorSpreadSilhouette.height * colorSpreadBurst.burstOriginY
-                                    xScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
-                                    yScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
-                                }
-
-                                Image {
-                                    id: silhouetteMask
-                                    anchors.fill: parent
-                                    anchors.margins: 12
-                                    source: colorSpreadBurst.burstMaskUrl
-                                    fillMode: Image.PreserveAspectFit
-                                    asynchronous: false
-                                    cache: true
-                                    visible: false
-                                }
-
-                                ColorOverlay {
-                                    anchors.fill: silhouetteMask
-                                    source: silhouetteMask
-                                    color: colorSpreadBurst.burstColor
-                                }
-                            }
-
                         }
                     }
                 }
