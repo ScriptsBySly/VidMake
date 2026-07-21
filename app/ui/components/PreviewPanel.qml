@@ -54,7 +54,7 @@ Panel {
     readonly property var activeZoomBlurMaskLayer: maskLayerById(zoomBlurMaskMode ? activeZoomBlurEffect.mask_layer_id || "" : "")
     readonly property bool zoomBlurUsesMask: activeZoomBlurMaskLayer !== null
     readonly property string zoomBlurCutoutPath: zoomBlurUsesMask ? activeZoomBlurMaskLayer.cutout_path || "" : ""
-    readonly property string zoomBlurCutoutUrl: zoomBlurCutoutPath.length > 0 ? pathToUrl(zoomBlurCutoutPath) : ""
+    readonly property string zoomBlurCutoutUrl: isImagePath(zoomBlurCutoutPath) ? pathToUrl(zoomBlurCutoutPath) : ""
     readonly property bool zoomBlurHasCutout: zoomBlurCutoutUrl.length > 0
     readonly property real zoomBlurOriginX: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_x || 0.5 : 0.5
     readonly property real zoomBlurOriginY: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_y || 0.5 : 0.5
@@ -68,7 +68,7 @@ Panel {
     readonly property var activeColorSpreadMaskLayer: maskLayerById(activeColorSpreadEffect ? activeColorSpreadEffect.mask_layer_id || "" : "")
     readonly property bool colorSpreadReady: activeColorSpreadEffect !== null && activeColorSpreadMaskLayer !== null
     readonly property string colorSpreadMaskPath: colorSpreadReady ? activeColorSpreadMaskLayer.cutout_path || "" : ""
-    readonly property string colorSpreadMaskUrl: colorSpreadMaskPath.length > 0 ? pathToUrl(colorSpreadMaskPath) : ""
+    readonly property string colorSpreadMaskUrl: isImagePath(colorSpreadMaskPath) ? pathToUrl(colorSpreadMaskPath) : ""
     readonly property bool colorSpreadHasMaskImage: colorSpreadMaskUrl.length > 0
     readonly property real colorSpreadProgress: colorSpreadProgressValue()
     readonly property string colorSpreadColor: colorSpreadCurrentColor()
@@ -79,16 +79,21 @@ Panel {
     readonly property var activeChromaRemoveMaskLayer: maskLayerById(activeChromaRemoveEffect ? activeChromaRemoveEffect.mask_layer_id || "" : "")
     readonly property bool chromaRemoveReady: activeChromaRemoveEffect !== null && activeChromaRemoveMaskLayer !== null && ((activeChromaRemoveMaskLayer.cutout_path || "").length > 0 || (activeChromaRemoveMaskLayer.preview_path || "").length > 0)
     readonly property string chromaRemoveCutoutPath: chromaRemoveReady ? activeChromaRemoveMaskLayer.cutout_path || "" : ""
-    readonly property string chromaRemoveCutoutUrl: chromaRemoveReady ? pathToUrl(chromaRemoveCutoutPath) : ""
+    readonly property string chromaRemoveCutoutUrl: chromaRemoveCutoutIsImage ? pathToUrl(chromaRemoveCutoutPath) : ""
     readonly property bool chromaRemoveCutoutIsVideo: isVideoPath(chromaRemoveCutoutPath)
     readonly property bool chromaRemoveCutoutIsImage: isImagePath(chromaRemoveCutoutPath)
     readonly property string chromaRemoveMaskPath: chromaRemoveReady ? activeChromaRemoveMaskLayer.preview_path || "" : ""
     readonly property string chromaRemoveMaskUrl: chromaRemoveMaskPath.length > 0 ? pathToUrl(chromaRemoveMaskPath) : ""
     readonly property bool chromaRemoveMaskIsVideo: isVideoPath(chromaRemoveMaskPath)
     readonly property bool chromaRemoveMaskIsImage: isImagePath(chromaRemoveMaskPath)
+    readonly property string chromaRemoveFramesPath: chromaRemoveReady ? activeChromaRemoveMaskLayer.cutout_frames_path || "" : ""
+    readonly property bool chromaRemoveHasFrameSequence: chromaRemoveFramesPath.length > 0
+    readonly property int chromaRemoveFrameIndex: chromaRemoveFrameIndexForLayer(activeChromaRemoveMaskLayer)
+    readonly property string chromaRemoveFrameUrl: chromaRemoveFrameUrlForLayerAt(activeChromaRemoveMaskLayer, chromaRemoveFrameIndex)
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
+    property string chromaRemoveDebugSignature: ""
 
     function extensionFromName(name) {
         var dot = name.lastIndexOf(".")
@@ -111,12 +116,66 @@ Panel {
         return isImageExtension(extensionFromName(path || ""))
     }
 
+    function sixDigits(value) {
+        var text = "" + Math.max(0, value)
+        while (text.length < 6) {
+            text = "0" + text
+        }
+        return text
+    }
+
     function pathToUrl(path) {
         var normalized = path.replace(/\\/g, "/")
         if (normalized.indexOf("file://") === 0) {
             return normalized
         }
         return "file:///" + encodeURI(normalized)
+    }
+
+    function mediaStatusName(status) {
+        if (status === MediaPlayer.NoMedia) return "NoMedia"
+        if (status === MediaPlayer.LoadingMedia) return "LoadingMedia"
+        if (status === MediaPlayer.LoadedMedia) return "LoadedMedia"
+        if (status === MediaPlayer.BufferingMedia) return "BufferingMedia"
+        if (status === MediaPlayer.BufferedMedia) return "BufferedMedia"
+        if (status === MediaPlayer.StalledMedia) return "StalledMedia"
+        if (status === MediaPlayer.EndOfMedia) return "EndOfMedia"
+        if (status === MediaPlayer.InvalidMedia) return "InvalidMedia"
+        return "Unknown(" + status + ")"
+    }
+
+    function playbackStateName(state) {
+        if (state === MediaPlayer.StoppedState) return "Stopped"
+        if (state === MediaPlayer.PlayingState) return "Playing"
+        if (state === MediaPlayer.PausedState) return "Paused"
+        return "Unknown(" + state + ")"
+    }
+
+    function logChromaRemove(reason) {
+        var effectId = activeChromaRemoveEffect ? activeChromaRemoveEffect.id || "" : ""
+        var maskId = activeChromaRemoveMaskLayer ? activeChromaRemoveMaskLayer.id || "" : ""
+        var signature = [
+            reason,
+            "mode=" + (compositionMode ? "composition" : "asset"),
+            "ready=" + chromaRemoveReady,
+            "effect=" + effectId,
+            "mask=" + maskId,
+            "source=" + (compositionMode ? compositionVideoPath : assetPath),
+            "preview=" + chromaRemoveMaskPath,
+            "previewVideo=" + chromaRemoveMaskIsVideo,
+            "cutout=" + chromaRemoveCutoutPath,
+            "cutoutImage=" + chromaRemoveCutoutIsImage,
+            "frames=" + chromaRemoveFramesPath,
+            "frameSeq=" + chromaRemoveHasFrameSequence,
+            "frameUrl=" + chromaRemoveFrameUrl,
+            "maskPlayer=" + mediaStatusName(chromaRemoveMaskPlayer.mediaStatus) + "/" + playbackStateName(chromaRemoveMaskPlayer.playbackState),
+            "maskError=" + chromaRemoveMaskPlayer.error + ":" + chromaRemoveMaskPlayer.errorString
+        ].join(" | ")
+        if (signature === chromaRemoveDebugSignature && reason !== "manual") {
+            return
+        }
+        chromaRemoveDebugSignature = signature
+        console.log("[VidMake][ChromaRemove] " + signature)
     }
 
     function formatTime(milliseconds) {
@@ -311,7 +370,7 @@ Panel {
 
     function chromaRemoveCutoutUrlForPath(path) {
         var layer = chromaRemoveMaskLayerForPath(path)
-        return layer !== null && (layer.cutout_path || "").length > 0 ? pathToUrl(layer.cutout_path) : ""
+        return layer !== null && isImagePath(layer.cutout_path || "") ? pathToUrl(layer.cutout_path) : ""
     }
 
     function chromaRemoveCutoutIsImageForPath(path) {
@@ -332,6 +391,34 @@ Panel {
     function chromaRemoveMaskIsVideoForPath(path) {
         var layer = chromaRemoveMaskLayerForPath(path)
         return layer !== null && isVideoPath(layer.preview_path || "")
+    }
+
+    function chromaRemoveFrameUrlForLayerAt(layer, frameIndex) {
+        if (!layer || !(layer.cutout_frames_path || "").length) {
+            return ""
+        }
+        if (frameIndex < 0) {
+            return ""
+        }
+        var basePath = (layer.cutout_frames_path || "").replace(/\\/g, "/")
+        return pathToUrl(basePath + "/frame_" + sixDigits(frameIndex) + ".png")
+    }
+
+    function chromaRemoveFrameUrlForLayer(layer) {
+        return chromaRemoveFrameUrlForLayerAt(layer, chromaRemoveFrameIndexForLayer(layer))
+    }
+
+    function chromaRemoveFrameIndexForLayer(layer) {
+        if (!layer || !(layer.cutout_frames_path || "").length) {
+            return -1
+        }
+        var fps = Math.max(1.0, layer.frame_rate || 30.0)
+        var frameCount = Math.max(1, layer.frame_count || 1)
+        return Math.max(0, Math.min(frameCount - 1, Math.floor((currentPosition / 1000.0) * fps)))
+    }
+
+    function chromaRemoveFrameUrlForPath(path) {
+        return chromaRemoveFrameUrlForLayer(chromaRemoveMaskLayerForPath(path))
     }
 
     function maskBound(name, fallback) {
@@ -621,6 +708,12 @@ Panel {
         player.position = 0
     }
 
+    onChromaRemoveReadyChanged: logChromaRemove("readyChanged")
+    onChromaRemoveMaskPathChanged: logChromaRemove("maskPathChanged")
+    onChromaRemoveCutoutPathChanged: logChromaRemove("cutoutPathChanged")
+    onChromaRemoveMaskIsVideoChanged: logChromaRemove("maskTypeChanged")
+    onCompositionModeChanged: logChromaRemove("modeChanged")
+
     AudioOutput {
         id: audioOutput
         volume: root.previewVolume
@@ -634,13 +727,17 @@ Panel {
         videoOutput: assetVideoOutput
         onPositionChanged: {
             if (!root.seeking && !root.compositionMode) {
-                scrubber.value = position
+                scrubber.value = player.position
             }
-            if (!root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - position) > 120) {
-                chromaRemoveMaskPlayer.position = position
+            if (!root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - player.position) > 120) {
+                chromaRemoveMaskPlayer.position = player.position
             }
         }
         onDurationChanged: scrubber.value = 0
+        onMediaStatusChanged: root.logChromaRemove("sourceStatusChanged:" + root.mediaStatusName(mediaStatus))
+        onErrorOccurred: function(error, errorString) {
+            console.log("[VidMake][ChromaRemove] sourcePlayerError | error=" + error + " | message=" + errorString)
+        }
     }
 
     MediaPlayer {
@@ -649,6 +746,12 @@ Panel {
         videoOutput: chromaRemoveMaskVideoOutput
         audioOutput: AudioOutput {
             muted: true
+        }
+        onSourceChanged: root.logChromaRemove("maskSourceChanged")
+        onMediaStatusChanged: root.logChromaRemove("maskStatusChanged:" + root.mediaStatusName(mediaStatus))
+        onPlaybackStateChanged: root.logChromaRemove("maskPlaybackChanged:" + root.playbackStateName(playbackState))
+        onErrorOccurred: function(error, errorString) {
+            console.log("[VidMake][ChromaRemove] maskPlayerError | error=" + error + " | message=" + errorString + " | source=" + source)
         }
     }
 
@@ -682,11 +785,15 @@ Panel {
         videoOutput: compositionVideoOutput
         onPositionChanged: {
             if (!root.seeking && root.compositionMode && root.compositionAudioPath.length === 0) {
-                scrubber.value = position
+                scrubber.value = compositionVideoPlayer.position
             }
-            if (root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - position) > 120) {
-                chromaRemoveMaskPlayer.position = position
+            if (root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - compositionVideoPlayer.position) > 120) {
+                chromaRemoveMaskPlayer.position = compositionVideoPlayer.position
             }
+        }
+        onMediaStatusChanged: root.logChromaRemove("compositionVideoStatusChanged:" + root.mediaStatusName(mediaStatus))
+        onErrorOccurred: function(error, errorString) {
+            console.log("[VidMake][ChromaRemove] compositionVideoError | error=" + error + " | message=" + errorString)
         }
     }
 
@@ -733,7 +840,9 @@ Panel {
                         id: assetVideoOutput
                         anchors.fill: parent
                         fillMode: VideoOutput.PreserveAspectFit
-                        visible: !root.compositionMode && root.isVideo
+                        visible: !root.compositionMode
+                            && root.isVideo
+                            && (!root.chromaRemoveReady || (root.chromaRemoveMaskIsVideo && !root.chromaRemoveHasFrameSequence))
                     }
 
                     VideoOutput {
@@ -743,6 +852,8 @@ Panel {
                         z: Math.max(0, root.compositionVideoLayerIndex)
                         visible: root.compositionMode
                             && root.compositionVideoIsVideo
+                            && (!root.chromaRemoveReadyForPath(root.compositionVideoPath)
+                                || (root.chromaRemoveMaskIsVideo && !root.chromaRemoveHasFrameSequence))
                     }
 
                     VideoOutput {
@@ -750,7 +861,7 @@ Panel {
                         anchors.fill: parent
                         anchors.margins: 12
                         fillMode: VideoOutput.PreserveAspectFit
-                        visible: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
+                        visible: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo && !root.chromaRemoveHasFrameSequence
                     }
 
                     ShaderEffectSource {
@@ -758,7 +869,7 @@ Panel {
                         sourceItem: root.compositionMode ? compositionVideoOutput : assetVideoOutput
                         live: true
                         recursive: true
-                        hideSource: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
+                        hideSource: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo && !root.chromaRemoveHasFrameSequence
                         visible: false
                     }
 
@@ -767,18 +878,21 @@ Panel {
                         sourceItem: chromaRemoveMaskVideoOutput
                         live: true
                         recursive: true
-                        hideSource: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
+                        hideSource: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo && !root.chromaRemoveHasFrameSequence
                         visible: false
                     }
 
                     ShaderEffect {
+                        id: chromaRemoveShaderItem
                         anchors.fill: parent
                         anchors.margins: 12
                         z: root.compositionMode ? Math.max(0, root.compositionVideoLayerIndex) : 0
                         property variant source: chromaRemoveSourceTexture
                         property variant maskSource: chromaRemoveMaskTexture
                         fragmentShader: Qt.resolvedUrl("../shaders/luma_mask.frag.qsb")
-                        visible: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
+                        visible: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo && !root.chromaRemoveHasFrameSequence
+                        onVisibleChanged: root.logChromaRemove("shaderVisibleChanged")
+                        Component.onCompleted: root.logChromaRemove("shaderCompleted")
                     }
 
                     Repeater {
@@ -808,12 +922,13 @@ Panel {
                             anchors.fill: parent
                             anchors.margins: 12
                             z: index
-                            source: root.chromaRemoveCutoutIsImageForPath(modelData.path)
-                                ? root.chromaRemoveCutoutUrlForPath(modelData.path)
-                                : ""
+                            readonly property string chromaFrameUrl: root.chromaRemoveFrameUrlForPath(modelData.path)
+                            source: chromaFrameUrl.length > 0
+                                ? chromaFrameUrl
+                                : root.chromaRemoveCutoutUrlForPath(modelData.path)
                             fillMode: Image.PreserveAspectFit
-                            asynchronous: true
-                            cache: false
+                            asynchronous: false
+                            cache: true
                             visible: source.toString().length > 0
                         }
                     }
@@ -830,11 +945,11 @@ Panel {
                     Image {
                         anchors.fill: parent
                         anchors.margins: 12
-                        source: root.chromaRemoveCutoutUrl
+                        source: root.chromaRemoveFrameUrl.length > 0 ? root.chromaRemoveFrameUrl : root.chromaRemoveCutoutUrl
                         fillMode: Image.PreserveAspectFit
-                        asynchronous: true
-                        cache: false
-                        visible: root.chromaRemoveReady && root.chromaRemoveCutoutIsImage
+                        asynchronous: false
+                        cache: true
+                        visible: root.chromaRemoveReady && (root.chromaRemoveHasFrameSequence || root.chromaRemoveCutoutIsImage)
                     }
 
                     Column {

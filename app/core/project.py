@@ -59,6 +59,9 @@ class MaskLayer:
     inverted: bool
     preview_path: str
     cutout_path: str
+    cutout_frames_path: str
+    frame_rate: float
+    frame_count: int
 
 
 @dataclass(frozen=True)
@@ -201,6 +204,7 @@ def validate_project(data: Any) -> dict[str, Any]:
         key_color = layer.get("key_color")
         preview_path = layer.get("preview_path", "")
         cutout_path = layer.get("cutout_path", "")
+        cutout_frames_path = layer.get("cutout_frames_path", "")
         if not isinstance(layer_id, str) or not layer_id:
             raise ValueError(f"Mask layer #{index + 1} is missing an id.")
         if not isinstance(name, str) or not name:
@@ -228,6 +232,9 @@ def validate_project(data: Any) -> dict[str, Any]:
                 "inverted": bool(layer.get("inverted", False)),
                 "preview_path": str(preview_path),
                 "cutout_path": str(cutout_path),
+                "cutout_frames_path": str(cutout_frames_path),
+                "frame_rate": float(layer.get("frame_rate", 0.0)),
+                "frame_count": int(layer.get("frame_count", 0)),
                 "mask_center_x": float(layer.get("mask_center_x", 0.5)),
                 "mask_center_y": float(layer.get("mask_center_y", 0.5)),
                 "mask_bounds": {

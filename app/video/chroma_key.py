@@ -195,7 +195,13 @@ def _analyze_image(
     return _mask_stats(mask)
 
 
-def _analyze_video(path: Path, settings: ChromaKeySettings, preview_path: Path, cutout_path: Path) -> dict[str, Any]:
+def _analyze_video(
+    path: Path,
+    settings: ChromaKeySettings,
+    preview_path: Path,
+    cutout_path: Path,
+    cutout_frames_path: Path,
+) -> dict[str, Any]:
     try:
         import imageio
         import imageio.v3 as iio
@@ -238,6 +244,8 @@ def _analyze_video(path: Path, settings: ChromaKeySettings, preview_path: Path, 
     max_x = 0.0
     max_y = 0.0
 
+    cutout_frames_path.mkdir(parents=True, exist_ok=True)
+
     try:
         for frame_rgb in iio.imiter(path, plugin="FFMPEG"):
             if frame_rgb.ndim == 2:
@@ -262,6 +270,7 @@ def _analyze_video(path: Path, settings: ChromaKeySettings, preview_path: Path, 
             preview_writer.append_data(np.repeat(mask[:, :, np.newaxis], 3, axis=2))
             cutout_rgba = np.dstack((frame_rgb, mask))
             cutout_writer.append_data(cutout_rgba)
+            imageio.imwrite(cutout_frames_path / f"frame_{frame_count:06d}.png", cutout_rgba)
             frame_count += 1
     finally:
         preview_writer.close()
@@ -295,6 +304,7 @@ def _analyze_video(path: Path, settings: ChromaKeySettings, preview_path: Path, 
         "duration": duration,
         "width": width,
         "height": height,
+        "frame_count": frame_count,
     }
 
 
@@ -318,12 +328,14 @@ def analyze_chroma_key(path: Path, settings: ChromaKeySettings, cache_root: Path
         frame_bgr, fps, width, height, duration, source_type = _read_frame(path, settings.preview_time_ms)
         preview_path = cache_root / f"mask-preview-{digest}.png"
         cutout_path = cache_root / f"mask-cutout-{digest}.png"
+        cutout_frames_path = Path()
         stats = _analyze_image(frame_bgr, settings, preview_path, cutout_path)
     else:
         source_type = "video"
         preview_path = cache_root / f"mask-preview-{digest}.mp4"
         cutout_path = cache_root / f"mask-cutout-{digest}.webm"
-        stats = _analyze_video(path, settings, preview_path, cutout_path)
+        cutout_frames_path = cache_root / f"mask-cutout-frames-{digest}"
+        stats = _analyze_video(path, settings, preview_path, cutout_path, cutout_frames_path)
         fps = stats["fps"]
         width = int(stats["width"])
         height = int(stats["height"])
@@ -348,6 +360,8 @@ def analyze_chroma_key(path: Path, settings: ChromaKeySettings, cache_root: Path
         "preview_url": preview_path.resolve().as_uri(),
         "cutout_path": str(cutout_path),
         "cutout_url": cutout_path.resolve().as_uri(),
+        "cutout_frames_path": str(cutout_frames_path) if source_type == "video" else "",
+        "frame_count": int(stats.get("frame_count", 1 if source_type == "image" else 0)),
         "kept_ratio": round(kept_ratio, 4),
         "transparent_ratio": round(1.0 - kept_ratio, 4),
         "mask_center_x": round(center_x, 4),
