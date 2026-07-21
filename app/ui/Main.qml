@@ -8,6 +8,9 @@ ApplicationWindow {
     id: window
     property string audioAssetName: ""
     property string visualAssetName: ""
+    property string selectedAssetName: ""
+    property string selectedAssetKind: ""
+    property string selectedAssetPath: ""
     property string projectPath: ""
     property string statusMessage: "Ready"
 
@@ -47,6 +50,9 @@ ApplicationWindow {
     function applyProject(data, path) {
         assetPanel.loadAssets(data.assets || [])
         refreshLatestAssetNames()
+        selectedAssetName = ""
+        selectedAssetKind = ""
+        selectedAssetPath = ""
         projectPath = path || ""
     }
 
@@ -204,6 +210,11 @@ ApplicationWindow {
                 onVisualImported: function(name, path) {
                     window.visualAssetName = name
                 }
+                onAssetSelected: function(name, kind, path) {
+                    window.selectedAssetName = name
+                    window.selectedAssetKind = kind
+                    window.selectedAssetPath = path
+                }
                 onAudioDeleted: function(name, path) {
                     if (window.audioAssetName === name) {
                         window.audioAssetName = assetPanel.latestAssetName("Audio")
@@ -236,6 +247,9 @@ ApplicationWindow {
 
                 PreviewPanel {
                     visualName: window.visualAssetName
+                    assetName: window.selectedAssetName
+                    assetKind: window.selectedAssetKind
+                    assetPath: window.selectedAssetPath
                     SplitView.fillWidth: true
                     SplitView.fillHeight: true
                     SplitView.minimumHeight: 320

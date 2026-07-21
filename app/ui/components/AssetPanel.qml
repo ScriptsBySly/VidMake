@@ -10,6 +10,8 @@ Panel {
     signal visualImported(string name, string path)
     signal audioDeleted(string name, string path)
     signal visualDeleted(string name, string path)
+    signal assetSelected(string name, string kind, string path)
+    property int selectedIndex: -1
 
     function fileNameFromUrl(fileUrl) {
         var path = localPathFromUrl(fileUrl)
@@ -32,6 +34,8 @@ Panel {
         var path = localPathFromUrl(fileUrl)
         var name = fileNameFromUrl(fileUrl)
         assetModel.append({ "name": name, "kind": kind, "icon": icon, "path": path })
+        selectedIndex = assetModel.count - 1
+        root.assetSelected(name, kind, path)
         return { "name": name, "path": path }
     }
 
@@ -90,6 +94,12 @@ Panel {
 
     function deleteAsset(index, kind, name, path) {
         assetModel.remove(index)
+        if (selectedIndex === index) {
+            selectedIndex = -1
+            root.assetSelected("", "", "")
+        } else if (selectedIndex > index) {
+            selectedIndex -= 1
+        }
         if (kind === "Audio") {
             root.audioDeleted(name, path)
         } else if (kind === "Visual") {
@@ -112,6 +122,7 @@ Panel {
 
     function loadAssets(items) {
         assetModel.clear()
+        selectedIndex = -1
         for (var i = 0; i < items.length; i++) {
             var asset = items[i]
             assetModel.append({
@@ -121,6 +132,11 @@ Panel {
                 "path": asset.path
             })
         }
+    }
+
+    function selectAsset(index, name, kind, path) {
+        selectedIndex = index
+        root.assetSelected(name, kind, path)
     }
 
     function latestAssetName(kind) {
@@ -286,8 +302,12 @@ Panel {
                 radius: 8
                 color: hover.hovered
                     ? (isAudio ? Theme.audioSurfaceHover : Theme.surfaceHover)
-                    : (isAudio ? Theme.audioSurface : Theme.surfaceRaised)
-                border.color: isAudio ? Theme.audioStroke : Theme.stroke
+                    : index === root.selectedIndex
+                        ? (isAudio ? Theme.audioSurfaceHover : Theme.dropSurface)
+                        : (isAudio ? Theme.audioSurface : Theme.surfaceRaised)
+                border.color: index === root.selectedIndex
+                    ? (isAudio ? Theme.audioAccent : Theme.accent)
+                    : (isAudio ? Theme.audioStroke : Theme.stroke)
 
                 RowLayout {
                     anchors.fill: parent
@@ -343,6 +363,10 @@ Panel {
 
                 HoverHandler {
                     id: hover
+                }
+
+                TapHandler {
+                    onTapped: root.selectAsset(index, name, kind, path)
                 }
             }
         }

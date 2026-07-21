@@ -4,6 +4,7 @@ import QtQuick.Controls
 Button {
     id: control
     property string iconText: ""
+    property string badgeText: ""
     property string tooltip: ""
     property bool accented: false
 
@@ -14,13 +15,29 @@ Button {
     ToolTip.visible: hovered && tooltip.length > 0
     ToolTip.text: tooltip
 
-    contentItem: Text {
-        text: control.iconText
-        color: control.accented ? "white" : Theme.text
-        font.family: "Segoe MDL2 Assets"
-        font.pixelSize: 13
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
+    contentItem: Item {
+        Text {
+            anchors.centerIn: parent
+            text: control.iconText
+            color: control.accented ? "white" : Theme.text
+            font.family: "Segoe MDL2 Assets"
+            font.pixelSize: 13
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 3
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 2
+            visible: control.badgeText.length > 0
+            text: control.badgeText
+            color: control.accented ? "white" : Theme.subtleText
+            font.family: Theme.fontFamily
+            font.pixelSize: 8
+            font.weight: Font.DemiBold
+        }
     }
 
     background: Rectangle {
