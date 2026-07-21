@@ -19,6 +19,7 @@ Panel {
     signal effectAddRequested()
     signal assetMoveRequested(string path, int direction)
     signal assetDeleteRequested(string name, string kind, string path)
+    signal assetLoopChanged(string path, bool loop)
     property var cachedAssets: []
     property var cachedKeyframeLayers: []
     property var cachedMaskLayers: []
@@ -119,6 +120,7 @@ Panel {
                 "name": asset.name,
                 "kind": asset.kind,
                 "path": asset.path,
+                "loop": asset.loop || false,
                 "start": 0,
                 "depth": 0,
                 "selectable": true
@@ -132,6 +134,7 @@ Panel {
                     "name": childKeyframes.name + " (" + childKeyframes.keyframes.length + ")",
                     "kind": "Keyframes",
                     "path": childKeyframes.id,
+                    "loop": false,
                     "start": 0,
                     "depth": 1,
                     "selectable": false
@@ -146,6 +149,7 @@ Panel {
                     "name": childMask.name,
                     "kind": "Mask",
                     "path": childMask.id,
+                    "loop": false,
                     "start": 0,
                     "depth": 1,
                     "selectable": false
@@ -160,6 +164,7 @@ Panel {
                     "name": childEffect.name,
                     "kind": "Effect",
                     "path": childEffect.id,
+                    "loop": false,
                     "start": 0,
                     "depth": 1,
                     "selectable": false
@@ -176,6 +181,7 @@ Panel {
                 "name": layer.name + " (" + layer.keyframes.length + ")",
                 "kind": "Keyframes",
                 "path": layer.id,
+                "loop": false,
                 "start": 0,
                 "depth": 0,
                 "selectable": false
@@ -190,6 +196,7 @@ Panel {
                 "name": mask.name,
                 "kind": "Mask",
                 "path": mask.id,
+                "loop": false,
                 "start": 0,
                 "depth": 0,
                 "selectable": false
@@ -204,6 +211,7 @@ Panel {
                 "name": effect.name,
                 "kind": "Effect",
                 "path": effect.id,
+                "loop": false,
                 "start": 0,
                 "depth": 0,
                 "selectable": false
@@ -362,6 +370,7 @@ Panel {
                     required property string name
                     required property string kind
                     required property string path
+                    required property bool loop
                     required property int start
                     required property int depth
                     required property bool selectable
@@ -418,6 +427,15 @@ Panel {
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
+                            }
+
+                            CheckBox {
+                                visible: selectable && kind === "Visual"
+                                checked: loop
+                                text: "Loop"
+                                spacing: 4
+                                Layout.preferredWidth: 68
+                                onClicked: root.assetLoopChanged(path, checked)
                             }
 
                             IconButton {

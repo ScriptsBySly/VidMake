@@ -243,6 +243,7 @@ def _analyze_video(
     min_y = 1.0
     max_x = 0.0
     max_y = 0.0
+    frame_mask_centers: list[dict[str, float | int]] = []
 
     cutout_frames_path.mkdir(parents=True, exist_ok=True)
 
@@ -257,6 +258,14 @@ def _analyze_video(
 
             mask = _mask_from_frame_rgb(frame_rgb, settings)
             stats = _mask_stats(mask)
+            frame_mask_centers.append(
+                {
+                    "frame": frame_count,
+                    "center_x": round(float(stats["center_x"]), 4),
+                    "center_y": round(float(stats["center_y"]), 4),
+                    "weight": int(stats["weight"]),
+                }
+            )
             kept_total += stats["kept_ratio"]
             if stats["weight"] > 0:
                 weight_total += stats["weight"]
@@ -305,6 +314,7 @@ def _analyze_video(
         "width": width,
         "height": height,
         "frame_count": frame_count,
+        "frame_mask_centers": frame_mask_centers,
     }
 
 
@@ -362,6 +372,7 @@ def analyze_chroma_key(path: Path, settings: ChromaKeySettings, cache_root: Path
         "cutout_url": cutout_path.resolve().as_uri(),
         "cutout_frames_path": str(cutout_frames_path) if source_type == "video" else "",
         "frame_count": int(stats.get("frame_count", 1 if source_type == "image" else 0)),
+        "frame_mask_centers": stats.get("frame_mask_centers", []),
         "kept_ratio": round(kept_ratio, 4),
         "transparent_ratio": round(1.0 - kept_ratio, 4),
         "mask_center_x": round(center_x, 4),

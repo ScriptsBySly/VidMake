@@ -33,7 +33,7 @@ Panel {
     function addAsset(kind, icon, fileUrl) {
         var path = localPathFromUrl(fileUrl)
         var name = fileNameFromUrl(fileUrl)
-        assetModel.append({ "name": name, "kind": kind, "icon": icon, "path": path })
+        assetModel.append({ "name": name, "kind": kind, "icon": icon, "path": path, "loop": false })
         selectedIndex = assetModel.count - 1
         root.assetSelected(name, kind, path)
         return { "name": name, "path": path }
@@ -125,7 +125,7 @@ Panel {
         var items = []
         for (var i = 0; i < assetModel.count; i++) {
             var asset = assetModel.get(i)
-            items.push({ "name": asset.name, "kind": asset.kind, "path": asset.path })
+            items.push({ "name": asset.name, "kind": asset.kind, "path": asset.path, "loop": asset.loop || false })
         }
         return items
     }
@@ -159,6 +159,15 @@ Panel {
         return true
     }
 
+    function setAssetLoopByPath(path, loop) {
+        var index = assetIndexForPath(path)
+        if (index < 0) {
+            return false
+        }
+        assetModel.setProperty(index, "loop", loop)
+        return true
+    }
+
     function loadAssets(items) {
         assetModel.clear()
         selectedIndex = -1
@@ -168,7 +177,8 @@ Panel {
                 "name": asset.name,
                 "kind": asset.kind,
                 "icon": iconForKind(asset.kind),
-                "path": asset.path
+                "path": asset.path,
+                "loop": asset.loop || false
             })
         }
     }

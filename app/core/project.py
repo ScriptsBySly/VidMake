@@ -20,6 +20,41 @@ def _is_hex_color(value: str) -> bool:
     return True
 
 
+def _frame_mask_centers_from_cutout_frames(frames_path: str) -> list[dict[str, float | int]]:
+    path = Path(frames_path)
+    if not path.is_dir():
+        return []
+    try:
+        import imageio.v3 as iio
+        import numpy as np
+    except ImportError:
+        return []
+
+    centers: list[dict[str, float | int]] = []
+    for index, frame_path in enumerate(sorted(path.glob("frame_*.png"))):
+        try:
+            frame = iio.imread(frame_path)
+        except Exception:
+            continue
+        if frame.ndim < 3 or frame.shape[2] < 4:
+            continue
+        alpha = frame[:, :, 3]
+        height, width = alpha.shape[:2]
+        ys, xs = np.nonzero(alpha > 0)
+        if len(xs) > 0 and width > 0 and height > 0:
+            centers.append(
+                {
+                    "frame": index,
+                    "center_x": float(xs.mean() / max(1, width - 1)),
+                    "center_y": float(ys.mean() / max(1, height - 1)),
+                    "weight": int(len(xs)),
+                }
+            )
+        else:
+            centers.append({"frame": index, "center_x": 0.5, "center_y": 0.5, "weight": 0})
+    return centers
+
+
 @dataclass(frozen=True)
 class ProjectSettings:
     width: int = 1080
@@ -33,6 +68,7 @@ class ProjectAsset:
     name: str
     kind: str
     path: str
+    loop: bool = False
 
 
 @dataclass(frozen=True)
@@ -62,6 +98,7 @@ class MaskLayer:
     cutout_frames_path: str
     frame_rate: float
     frame_count: int
+    frame_mask_centers: list[dict[str, float | int]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -127,7 +164,7 @@ def validate_project(data: Any) -> dict[str, Any]:
     if not isinstance(effect_layers, list):
         raise ValueError("Project effect layers must be a list.")
 
-    validated_assets: list[dict[str, str]] = []
+    validated_assets: list[dict[str, Any]] = []
     for index, asset in enumerate(assets):
         if not isinstance(asset, dict):
             raise ValueError(f"Asset #{index + 1} must be an object.")
@@ -140,7 +177,7 @@ def validate_project(data: Any) -> dict[str, Any]:
             raise ValueError(f"Asset #{index + 1} is missing a name.")
         if not isinstance(path, str) or not path:
             raise ValueError(f"Asset #{index + 1} is missing a path.")
-        validated_assets.append({"name": name, "kind": kind, "path": path})
+        validated_assets.append({"name": name, "kind": kind, "path": path, "loop": bool(asset.get("loop", False))})
 
     validated_keyframe_layers: list[dict[str, Any]] = []
     for index, layer in enumerate(audio_keyframe_layers):
@@ -220,6 +257,23 @@ def validate_project(data: Any) -> dict[str, Any]:
         mask_bounds = layer.get("mask_bounds", {})
         if not isinstance(mask_bounds, dict):
             mask_bounds = {}
+        frame_mask_centers = layer.get("frame_mask_centers", [])
+        if not isinstance(frame_mask_centers, list):
+            frame_mask_centers = []
+        if not frame_mask_centers and str(cutout_frames_path):
+            frame_mask_centers = _frame_mask_centers_from_cutout_frames(str(cutout_frames_path))
+        validated_frame_mask_centers: list[dict[str, float | int]] = []
+        for center in frame_mask_centers:
+            if not isinstance(center, dict):
+                continue
+            validated_frame_mask_centers.append(
+                {
+                    "frame": int(center.get("frame", len(validated_frame_mask_centers))),
+                    "center_x": float(center.get("center_x", layer.get("mask_center_x", 0.5))),
+                    "center_y": float(center.get("center_y", layer.get("mask_center_y", 0.5))),
+                    "weight": int(center.get("weight", 0)),
+                }
+            )
         validated_mask_layers.append(
             {
                 "id": layer_id,
@@ -235,6 +289,7 @@ def validate_project(data: Any) -> dict[str, Any]:
                 "cutout_frames_path": str(cutout_frames_path),
                 "frame_rate": float(layer.get("frame_rate", 0.0)),
                 "frame_count": int(layer.get("frame_count", 0)),
+                "frame_mask_centers": validated_frame_mask_centers,
                 "mask_center_x": float(layer.get("mask_center_x", 0.5)),
                 "mask_center_y": float(layer.get("mask_center_y", 0.5)),
                 "mask_bounds": {

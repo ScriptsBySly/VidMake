@@ -102,6 +102,7 @@ Dialog {
             "cutout_frames_path": analysisResult.cutout_frames_path || "",
             "frame_rate": analysisResult.frame_rate || 0,
             "frame_count": analysisResult.frame_count || 0,
+            "frame_mask_centers": analysisResult.frame_mask_centers || [],
             "mask_center_x": analysisResult.mask_center_x || 0.5,
             "mask_center_y": analysisResult.mask_center_y || 0.5,
             "mask_bounds": analysisResult.mask_bounds || {

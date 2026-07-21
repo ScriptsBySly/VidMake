@@ -39,6 +39,8 @@ Panel {
     readonly property bool compositionVisualIsVideo: isVideoExtension(compositionVisualExtension)
     readonly property bool compositionVisualIsImage: isImageExtension(compositionVisualExtension)
     readonly property bool compositionVideoIsVideo: isVideoExtension(compositionVideoExtension)
+    readonly property bool compositionVideoLoopEnabled: assetLoopEnabled(compositionVideoPath)
+    readonly property bool assetLoopEnabledForCurrentAsset: assetLoopEnabled(assetPath)
     readonly property bool compositionCanPlay: compositionAudioPath.length > 0 || compositionVideoIsVideo
     readonly property bool activeCanPlay: compositionMode ? compositionCanPlay : canPlay
     readonly property int compositionPosition: compositionAudioPath.length > 0 ? compositionAudioPlayer.position : compositionVideoPlayer.position
@@ -54,8 +56,11 @@ Panel {
     readonly property var activeZoomBlurMaskLayer: maskLayerById(zoomBlurMaskMode ? activeZoomBlurEffect.mask_layer_id || "" : "")
     readonly property bool zoomBlurUsesMask: activeZoomBlurMaskLayer !== null
     readonly property string zoomBlurCutoutPath: zoomBlurUsesMask ? activeZoomBlurMaskLayer.cutout_path || "" : ""
-    readonly property string zoomBlurCutoutUrl: isImagePath(zoomBlurCutoutPath) ? pathToUrl(zoomBlurCutoutPath) : ""
+    readonly property int zoomBlurFrameIndex: chromaRemoveFrameIndexForLayer(activeZoomBlurMaskLayer)
+    readonly property string zoomBlurFrameUrl: chromaRemoveFrameUrlForLayerAt(activeZoomBlurMaskLayer, zoomBlurFrameIndex)
+    readonly property string zoomBlurCutoutUrl: zoomBlurFrameUrl.length > 0 ? zoomBlurFrameUrl : isImagePath(zoomBlurCutoutPath) ? pathToUrl(zoomBlurCutoutPath) : ""
     readonly property bool zoomBlurHasCutout: zoomBlurCutoutUrl.length > 0
+    readonly property var zoomBlurBursts: zoomBlurBurstModel()
     readonly property real zoomBlurOriginX: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_x || 0.5 : 0.5
     readonly property real zoomBlurOriginY: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_y || 0.5 : 0.5
     readonly property real zoomBlurMaskX: maskBound("min_x", 0.0) * frame.width
@@ -68,7 +73,9 @@ Panel {
     readonly property var activeColorSpreadMaskLayer: maskLayerById(activeColorSpreadEffect ? activeColorSpreadEffect.mask_layer_id || "" : "")
     readonly property bool colorSpreadReady: activeColorSpreadEffect !== null && activeColorSpreadMaskLayer !== null
     readonly property string colorSpreadMaskPath: colorSpreadReady ? activeColorSpreadMaskLayer.cutout_path || "" : ""
-    readonly property string colorSpreadMaskUrl: isImagePath(colorSpreadMaskPath) ? pathToUrl(colorSpreadMaskPath) : ""
+    readonly property int colorSpreadFrameIndex: chromaRemoveFrameIndexForLayer(activeColorSpreadMaskLayer)
+    readonly property string colorSpreadFrameUrl: chromaRemoveFrameUrlForLayerAt(activeColorSpreadMaskLayer, colorSpreadFrameIndex)
+    readonly property string colorSpreadMaskUrl: colorSpreadFrameUrl.length > 0 ? colorSpreadFrameUrl : isImagePath(colorSpreadMaskPath) ? pathToUrl(colorSpreadMaskPath) : ""
     readonly property bool colorSpreadHasMaskImage: colorSpreadMaskUrl.length > 0
     readonly property real colorSpreadProgress: colorSpreadProgressValue()
     readonly property string colorSpreadColor: colorSpreadCurrentColor()
@@ -253,15 +260,15 @@ Panel {
                 compositionAudioPlayer.position = target
             }
             if (compositionVideoIsVideo) {
-                compositionVideoPlayer.position = target
+                compositionVideoPlayer.position = loopedPosition(target, compositionVideoPlayer.duration, compositionVideoLoopEnabled)
             }
             if (chromaRemoveMaskIsVideo) {
-                chromaRemoveMaskPlayer.position = target
+                chromaRemoveMaskPlayer.position = loopedPositionForLayer(activeChromaRemoveMaskLayer)
             }
         } else {
-            player.position = target
+            player.position = loopedPosition(target, player.duration, assetLoopEnabledForCurrentAsset)
             if (chromaRemoveMaskIsVideo) {
-                chromaRemoveMaskPlayer.position = target
+                chromaRemoveMaskPlayer.position = loopedPositionForLayer(activeChromaRemoveMaskLayer)
             }
         }
     }
@@ -281,7 +288,7 @@ Panel {
                 compositionAudioName = asset.name
                 compositionAudioPath = asset.path
             } else if (asset.kind === "Visual") {
-                visualAssets.push({ "name": asset.name, "kind": asset.kind, "path": asset.path })
+                visualAssets.push({ "name": asset.name, "kind": asset.kind, "path": asset.path, "loop": asset.loop || false })
                 compositionVisualName = asset.name
                 compositionVisualPath = asset.path
                 if (visualAssetIsVideo(asset)) {
@@ -328,6 +335,37 @@ Panel {
             }
         }
         return null
+    }
+
+    function assetLoopEnabled(path) {
+        if (!path || path.length === 0) {
+            return false
+        }
+        for (var i = 0; i < compositionVisualAssets.length; i++) {
+            var asset = compositionVisualAssets[i]
+            if ((asset.path || "") === path) {
+                return asset.loop || false
+            }
+        }
+        return false
+    }
+
+    function loopedPosition(position, duration, enabled) {
+        if (!enabled || duration <= 0) {
+            return Math.max(0, position)
+        }
+        var wrapped = position % duration
+        return wrapped < 0 ? wrapped + duration : wrapped
+    }
+
+    function loopedPositionForLayer(layer) {
+        if (!layer) {
+            return currentPosition
+        }
+        var fps = Math.max(1.0, layer.frame_rate || 30.0)
+        var frameCount = Math.max(1, layer.frame_count || 1)
+        var duration = Math.max(1, Math.round(frameCount / fps * 1000.0))
+        return loopedPosition(currentPosition, duration, assetLoopEnabled(layer.source_video_path || ""))
     }
 
     function visualAssetExtension(asset) {
@@ -404,6 +442,39 @@ Panel {
         return pathToUrl(basePath + "/frame_" + sixDigits(frameIndex) + ".png")
     }
 
+    function chromaRemoveFrameIndexForLayerAtPosition(layer, position) {
+        if (!layer || !(layer.cutout_frames_path || "").length) {
+            return -1
+        }
+        var fps = Math.max(1.0, layer.frame_rate || 30.0)
+        var frameCount = Math.max(1, layer.frame_count || 1)
+        var loopDuration = Math.max(1, Math.round(frameCount / fps * 1000.0))
+        var looped = loopedPosition(position, loopDuration, assetLoopEnabled(layer.source_video_path || ""))
+        return Math.max(0, Math.min(frameCount - 1, Math.floor((looped / 1000.0) * fps)))
+    }
+
+    function chromaRemoveFrameUrlForLayerAtPosition(layer, position) {
+        return chromaRemoveFrameUrlForLayerAt(layer, chromaRemoveFrameIndexForLayerAtPosition(layer, position))
+    }
+
+    function maskCenterForLayerAtPosition(layer, position) {
+        if (!layer) {
+            return { "x": 0.5, "y": 0.5 }
+        }
+        var frameIndex = chromaRemoveFrameIndexForLayerAtPosition(layer, position)
+        var centers = layer.frame_mask_centers || []
+        if (frameIndex >= 0 && frameIndex < centers.length) {
+            var center = centers[frameIndex]
+            if ((center.weight || 0) > 0) {
+                return {
+                    "x": center.center_x === undefined ? layer.mask_center_x || 0.5 : center.center_x,
+                    "y": center.center_y === undefined ? layer.mask_center_y || 0.5 : center.center_y
+                }
+            }
+        }
+        return { "x": layer.mask_center_x || 0.5, "y": layer.mask_center_y || 0.5 }
+    }
+
     function chromaRemoveFrameUrlForLayer(layer) {
         return chromaRemoveFrameUrlForLayerAt(layer, chromaRemoveFrameIndexForLayer(layer))
     }
@@ -412,9 +483,7 @@ Panel {
         if (!layer || !(layer.cutout_frames_path || "").length) {
             return -1
         }
-        var fps = Math.max(1.0, layer.frame_rate || 30.0)
-        var frameCount = Math.max(1, layer.frame_count || 1)
-        return Math.max(0, Math.min(frameCount - 1, Math.floor((currentPosition / 1000.0) * fps)))
+        return chromaRemoveFrameIndexForLayerAtPosition(layer, currentPosition)
     }
 
     function chromaRemoveFrameUrlForPath(path) {
@@ -437,9 +506,10 @@ Panel {
         return value === undefined ? fallback : value
     }
 
-    function zoomBlurBurstScale(index) {
+    function zoomBlurBurstScale(index, pulse) {
         var zoomAmount = activeZoomBlurEffect ? activeZoomBlurEffect.zoom_amount : 1.12
-        return 1.0 + (zoomAmount - 1.0) * zoomBlurPulse * (1.0 + index * 0.55)
+        var amount = pulse === undefined ? zoomBlurPulse : pulse
+        return 1.0 + (zoomAmount - 1.0) * amount * (1.0 + index * 0.55)
     }
 
     function zoomBlurEffectForCurrentVisual() {
@@ -561,14 +631,42 @@ Panel {
         if (!effect || !activeColorSpreadMaskLayer) {
             return []
         }
+        var fallbackMaskUrl = isImagePath(colorSpreadMaskPath) ? pathToUrl(colorSpreadMaskPath) : colorSpreadMaskUrl
+        function maskUrlAt(triggerMilliseconds) {
+            var frameUrl = chromaRemoveFrameUrlForLayerAtPosition(activeColorSpreadMaskLayer, triggerMilliseconds)
+            return frameUrl.length > 0 ? frameUrl : fallbackMaskUrl
+        }
+        function burstCenterAt(triggerMilliseconds) {
+            return maskCenterForLayerAtPosition(activeColorSpreadMaskLayer, triggerMilliseconds)
+        }
         if (!effect.finish_spread) {
             var currentProgress = colorSpreadProgressValue()
             if (currentProgress <= 0.0) {
                 return []
             }
+            var triggerMs = currentPosition
+            if ((effect.trigger_mode || "interval") === "keyframes") {
+                var keyframeLayer = audioKeyframeLayerById(effect.keyframe_layer_id || "")
+                if (keyframeLayer && keyframeLayer.keyframes) {
+                    var nowSeconds = currentPosition / 1000.0
+                    for (var keyframeIndex = 0; keyframeIndex < keyframeLayer.keyframes.length; keyframeIndex++) {
+                        var keyframeTime = keyframeLayer.keyframes[keyframeIndex].time_seconds || 0.0
+                        if (keyframeTime > nowSeconds) {
+                            break
+                        }
+                        triggerMs = Math.round(keyframeTime * 1000.0)
+                    }
+                }
+            } else {
+                var singleIntervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
+                triggerMs = Math.floor(currentPosition / singleIntervalMs) * singleIntervalMs
+            }
             return [{
                 "progress": currentProgress,
-                "color": colorSpreadCurrentColor()
+                "color": colorSpreadCurrentColor(),
+                "maskUrl": maskUrlAt(triggerMs),
+                "originX": burstCenterAt(triggerMs).x,
+                "originY": burstCenterAt(triggerMs).y
             }]
         }
 
@@ -590,9 +688,13 @@ Panel {
                 }
                 var delta = nowSeconds - timeSeconds
                 if (delta <= cutoffSeconds) {
+                    var triggerMs = Math.round(timeSeconds * 1000.0)
                     bursts.push({
                         "progress": Math.max(0.0, Math.min(1.0, delta / durationSeconds)),
-                        "color": i % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
+                        "color": i % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8",
+                        "maskUrl": maskUrlAt(triggerMs),
+                        "originX": burstCenterAt(triggerMs).x,
+                        "originY": burstCenterAt(triggerMs).y
                     })
                 }
             }
@@ -608,7 +710,10 @@ Panel {
             if (ageMs >= 0 && ageMs <= cutoffMs) {
                 bursts.push({
                     "progress": Math.max(0.0, Math.min(1.0, ageMs / durationMs)),
-                    "color": cycle % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
+                    "color": cycle % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8",
+                    "maskUrl": maskUrlAt(triggerMs),
+                    "originX": burstCenterAt(triggerMs).x,
+                    "originY": burstCenterAt(triggerMs).y
                 })
             }
         }
@@ -659,6 +764,74 @@ Panel {
             return 1.0 - ((phase - attackMs) / Math.max(1, releaseMs))
         }
         return 0.0
+    }
+
+    function zoomBlurBurstModel() {
+        var effect = activeZoomBlurEffect
+        if (!effect || !activeZoomBlurMaskLayer) {
+            return []
+        }
+        var fallbackMaskUrl = isImagePath(zoomBlurCutoutPath) ? pathToUrl(zoomBlurCutoutPath) : zoomBlurCutoutUrl
+        function maskUrlAt(triggerMilliseconds) {
+            var frameUrl = chromaRemoveFrameUrlForLayerAtPosition(activeZoomBlurMaskLayer, triggerMilliseconds)
+            return frameUrl.length > 0 ? frameUrl : fallbackMaskUrl
+        }
+        function burstAt(triggerMilliseconds, pulse) {
+            var center = maskCenterForLayerAtPosition(activeZoomBlurMaskLayer, triggerMilliseconds)
+            return {
+                "pulse": Math.max(0.0, Math.min(1.0, pulse)),
+                "maskUrl": maskUrlAt(triggerMilliseconds),
+                "originX": center.x,
+                "originY": center.y
+            }
+        }
+
+        if ((effect.trigger_mode || "interval") === "keyframes") {
+            var layer = audioKeyframeLayerById(effect.keyframe_layer_id || "")
+            if (!layer || !layer.keyframes || layer.keyframes.length === 0) {
+                return []
+            }
+            var nowSeconds = currentPosition / 1000.0
+            var attackSeconds = 0.06
+            var releaseSeconds = 0.28
+            var bestPulse = 0.0
+            var bestTriggerMs = -1
+            for (var i = 0; i < layer.keyframes.length; i++) {
+                var keyframe = layer.keyframes[i]
+                var timeSeconds = keyframe.time_seconds || 0.0
+                if (timeSeconds > nowSeconds + attackSeconds) {
+                    break
+                }
+                var delta = nowSeconds - timeSeconds
+                var pulse = 0.0
+                if (delta < 0 && -delta <= attackSeconds) {
+                    pulse = 1.0 + (delta / attackSeconds)
+                } else if (delta >= 0 && delta <= releaseSeconds) {
+                    pulse = 1.0 - (delta / releaseSeconds)
+                }
+                pulse *= Math.max(0.0, Math.min(1.0, keyframe.value || 1.0))
+                if (pulse > bestPulse) {
+                    bestPulse = pulse
+                    bestTriggerMs = Math.round(timeSeconds * 1000.0)
+                }
+            }
+            return bestPulse > 0.01 && bestTriggerMs >= 0 ? [burstAt(bestTriggerMs, bestPulse)] : []
+        }
+
+        var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
+        var phase = currentPosition % intervalMs
+        var attackMs = Math.min(120, intervalMs * 0.25)
+        var releaseMs = Math.min(420, intervalMs * 0.75)
+        var pulseValue = 0.0
+        if (phase <= attackMs) {
+            pulseValue = phase / Math.max(1, attackMs)
+        } else if (phase <= attackMs + releaseMs) {
+            pulseValue = 1.0 - ((phase - attackMs) / Math.max(1, releaseMs))
+        }
+        if (pulseValue <= 0.01) {
+            return []
+        }
+        return [burstAt(Math.floor(currentPosition / intervalMs) * intervalMs, pulseValue)]
     }
 
     function stopComposition() {
@@ -725,12 +898,14 @@ Panel {
         source: root.canPlay && !root.compositionMode ? root.mediaUrl : ""
         audioOutput: audioOutput
         videoOutput: assetVideoOutput
+        loops: root.assetLoopEnabledForCurrentAsset ? MediaPlayer.Infinite : 1
         onPositionChanged: {
             if (!root.seeking && !root.compositionMode) {
                 scrubber.value = player.position
             }
-            if (!root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - player.position) > 120) {
-                chromaRemoveMaskPlayer.position = player.position
+            var maskPosition = root.loopedPositionForLayer(root.activeChromaRemoveMaskLayer)
+            if (!root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - maskPosition) > 120) {
+                chromaRemoveMaskPlayer.position = maskPosition
             }
         }
         onDurationChanged: scrubber.value = 0
@@ -744,6 +919,7 @@ Panel {
         id: chromaRemoveMaskPlayer
         source: root.chromaRemoveMaskIsVideo ? root.chromaRemoveMaskUrl : ""
         videoOutput: chromaRemoveMaskVideoOutput
+        loops: root.assetLoopEnabled((root.activeChromaRemoveMaskLayer && root.activeChromaRemoveMaskLayer.source_video_path) || "") ? MediaPlayer.Infinite : 1
         audioOutput: AudioOutput {
             muted: true
         }
@@ -783,12 +959,14 @@ Panel {
         source: root.compositionVideoIsVideo ? root.compositionVideoUrl : ""
         audioOutput: compositionVideoAudioOutput
         videoOutput: compositionVideoOutput
+        loops: root.compositionVideoLoopEnabled ? MediaPlayer.Infinite : 1
         onPositionChanged: {
             if (!root.seeking && root.compositionMode && root.compositionAudioPath.length === 0) {
                 scrubber.value = compositionVideoPlayer.position
             }
-            if (root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - compositionVideoPlayer.position) > 120) {
-                chromaRemoveMaskPlayer.position = compositionVideoPlayer.position
+            var maskPosition = root.loopedPositionForLayer(root.activeChromaRemoveMaskLayer)
+            if (root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - maskPosition) > 120) {
+                chromaRemoveMaskPlayer.position = maskPosition
             }
         }
         onMediaStatusChanged: root.logChromaRemove("compositionVideoStatusChanged:" + root.mediaStatusName(mediaStatus))
@@ -1000,6 +1178,9 @@ Panel {
                             required property var modelData
                             readonly property real burstProgress: modelData.progress || 0.0
                             readonly property string burstColor: modelData.color || root.colorSpreadColor
+                            readonly property string burstMaskUrl: modelData.maskUrl || root.colorSpreadMaskUrl
+                            readonly property real burstOriginX: modelData.originX === undefined ? root.colorSpreadOriginX : modelData.originX
+                            readonly property real burstOriginY: modelData.originY === undefined ? root.colorSpreadOriginY : modelData.originY
                             anchors.fill: parent
 
                             Item {
@@ -1007,8 +1188,8 @@ Panel {
                                 anchors.fill: parent
                                 opacity: 0.72
                                 transform: Scale {
-                                    origin.x: colorSpreadSilhouette.width * root.colorSpreadOriginX
-                                    origin.y: colorSpreadSilhouette.height * root.colorSpreadOriginY
+                                    origin.x: colorSpreadSilhouette.width * colorSpreadBurst.burstOriginX
+                                    origin.y: colorSpreadSilhouette.height * colorSpreadBurst.burstOriginY
                                     xScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
                                     yScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
                                 }
@@ -1017,10 +1198,10 @@ Panel {
                                     id: silhouetteMask
                                     anchors.fill: parent
                                     anchors.margins: 12
-                                    source: root.colorSpreadMaskUrl
+                                    source: colorSpreadBurst.burstMaskUrl
                                     fillMode: Image.PreserveAspectFit
-                                    asynchronous: true
-                                    cache: false
+                                    asynchronous: false
+                                    cache: true
                                     visible: false
                                 }
 
@@ -1032,16 +1213,6 @@ Panel {
                             }
 
                         }
-                    }
-
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        source: root.colorSpreadMaskUrl
-                        fillMode: Image.PreserveAspectFit
-                        asynchronous: true
-                        cache: false
-                        opacity: 1.0
                     }
                 }
 
@@ -1101,27 +1272,41 @@ Panel {
 
                 Item {
                     anchors.fill: parent
-                    visible: root.zoomBlurMaskMode && root.zoomBlurOpacity > 0.01
+                    visible: root.zoomBlurMaskMode && root.zoomBlurBursts.length > 0
                     opacity: Math.min(1.0, 0.38 + root.zoomBlurOpacity)
 
                     Repeater {
-                        model: root.zoomBlurHasCutout ? 5 : 0
+                        model: root.zoomBlurBursts
 
-                        Image {
-                            id: maskedFrameBurst
-                            required property int index
+                        Item {
+                            id: zoomBlurBurst
+                            required property var modelData
                             anchors.fill: parent
-                            anchors.margins: 12
-                            source: root.zoomBlurCutoutUrl
-                            fillMode: Image.PreserveAspectFit
-                            asynchronous: true
-                            cache: false
-                            opacity: Math.max(0.0, 0.55 - index * 0.09) * root.zoomBlurPulse
-                            transform: Scale {
-                                origin.x: maskedFrameBurst.width * root.zoomBlurOriginX
-                                origin.y: maskedFrameBurst.height * root.zoomBlurOriginY
-                                xScale: root.zoomBlurBurstScale(maskedFrameBurst.index)
-                                yScale: root.zoomBlurBurstScale(maskedFrameBurst.index)
+                            readonly property real burstPulse: modelData.pulse || 0.0
+                            readonly property string burstMaskUrl: modelData.maskUrl || root.zoomBlurCutoutUrl
+                            readonly property real burstOriginX: modelData.originX === undefined ? root.zoomBlurOriginX : modelData.originX
+                            readonly property real burstOriginY: modelData.originY === undefined ? root.zoomBlurOriginY : modelData.originY
+
+                            Repeater {
+                                model: zoomBlurBurst.burstMaskUrl.length > 0 ? 5 : 0
+
+                                Image {
+                                    id: maskedFrameBurst
+                                    required property int index
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    source: zoomBlurBurst.burstMaskUrl
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: false
+                                    cache: true
+                                    opacity: Math.max(0.0, 0.55 - index * 0.09) * zoomBlurBurst.burstPulse
+                                    transform: Scale {
+                                        origin.x: maskedFrameBurst.width * zoomBlurBurst.burstOriginX
+                                        origin.y: maskedFrameBurst.height * zoomBlurBurst.burstOriginY
+                                        xScale: root.zoomBlurBurstScale(maskedFrameBurst.index, zoomBlurBurst.burstPulse)
+                                        yScale: root.zoomBlurBurstScale(maskedFrameBurst.index, zoomBlurBurst.burstPulse)
+                                    }
+                                }
                             }
                         }
                     }

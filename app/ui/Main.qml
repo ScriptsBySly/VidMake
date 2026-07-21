@@ -104,6 +104,15 @@ ApplicationWindow {
         statusMessage = direction < 0 ? "Layer moved up" : "Layer moved down"
     }
 
+    function setAssetLoop(path, loop) {
+        if (!assetPanel.setAssetLoopByPath(path, loop)) {
+            statusMessage = "Asset not found"
+            return
+        }
+        syncTimelineAssets()
+        statusMessage = loop ? "Layer loop enabled" : "Layer loop disabled"
+    }
+
     function hasId(items, id) {
         if (id.length === 0) {
             return false
@@ -1748,6 +1757,9 @@ ApplicationWindow {
                     onEffectAddRequested: effectPickerDialog.open()
                     onAssetMoveRequested: function(path, direction) {
                         window.moveAssetLayer(path, direction)
+                    }
+                    onAssetLoopChanged: function(path, loop) {
+                        window.setAssetLoop(path, loop)
                     }
                     onAssetDeleteRequested: function(name, kind, path) {
                         window.deleteAssetFromTimeline(name, kind, path)
