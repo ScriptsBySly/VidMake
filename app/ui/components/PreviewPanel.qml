@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 import QtMultimedia
 
 Panel {
@@ -59,12 +60,14 @@ Panel {
     readonly property var activeColorSpreadEffect: colorSpreadEffectForCurrentVisual()
     readonly property var activeColorSpreadMaskLayer: maskLayerById(activeColorSpreadEffect ? activeColorSpreadEffect.mask_layer_id || "" : "")
     readonly property bool colorSpreadReady: activeColorSpreadEffect !== null && activeColorSpreadMaskLayer !== null
+    readonly property string colorSpreadMaskPath: colorSpreadReady ? activeColorSpreadMaskLayer.cutout_path || "" : ""
+    readonly property string colorSpreadMaskUrl: colorSpreadMaskPath.length > 0 ? pathToUrl(colorSpreadMaskPath) : ""
+    readonly property bool colorSpreadHasMaskImage: colorSpreadMaskUrl.length > 0
     readonly property real colorSpreadProgress: colorSpreadProgressValue()
     readonly property string colorSpreadColor: colorSpreadCurrentColor()
     readonly property real colorSpreadOriginX: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_x || 0.5 : 0.5
     readonly property real colorSpreadOriginY: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_y || 0.5 : 0.5
-    readonly property real colorSpreadRadius: colorSpreadMaxRadius() * colorSpreadProgress
-    readonly property real colorSpreadOpacity: colorSpreadReady ? Math.max(0.0, 0.42 * (1.0 - colorSpreadProgress * 0.25)) : 0.0
+    readonly property real colorSpreadOpacity: colorSpreadReady ? Math.max(0.0, 0.46 * (1.0 - colorSpreadProgress * 0.2)) : 0.0
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -285,14 +288,20 @@ Panel {
         return cycle % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
     }
 
-    function colorSpreadMaxRadius() {
-        var originX = frame.width * colorSpreadOriginX
-        var originY = frame.height * colorSpreadOriginY
-        var topLeft = Math.sqrt(originX * originX + originY * originY)
-        var topRight = Math.sqrt((frame.width - originX) * (frame.width - originX) + originY * originY)
-        var bottomLeft = Math.sqrt(originX * originX + (frame.height - originY) * (frame.height - originY))
-        var bottomRight = Math.sqrt((frame.width - originX) * (frame.width - originX) + (frame.height - originY) * (frame.height - originY))
-        return Math.max(topLeft, topRight, bottomLeft, bottomRight) + 32
+    function colorSpreadMaxScale() {
+        if (!activeColorSpreadMaskLayer) {
+            return 3.0
+        }
+        var maskWidth = Math.max(1, (maskLayerBound(activeColorSpreadMaskLayer, "max_x", 1.0)
+            - maskLayerBound(activeColorSpreadMaskLayer, "min_x", 0.0)) * frame.width)
+        var maskHeight = Math.max(1, (maskLayerBound(activeColorSpreadMaskLayer, "max_y", 1.0)
+            - maskLayerBound(activeColorSpreadMaskLayer, "min_y", 0.0)) * frame.height)
+        return Math.max(2.0, Math.max(frame.width / maskWidth, frame.height / maskHeight) * 1.35)
+    }
+
+    function colorSpreadSilhouetteScale(index) {
+        var delayedProgress = Math.max(0.0, Math.min(1.0, colorSpreadProgress - index * 0.045))
+        return 1.0 + (colorSpreadMaxScale() - 1.0) * delayedProgress
     }
 
     function zoomBlurPulseValue() {
@@ -535,15 +544,53 @@ Panel {
                     }
                 }
 
-                Rectangle {
-                    width: Math.max(10, root.colorSpreadRadius * 2)
-                    height: width
-                    radius: width / 2
-                    x: frame.width * root.colorSpreadOriginX - width / 2
-                    y: frame.height * root.colorSpreadOriginY - height / 2
-                    color: root.colorSpreadColor
-                    opacity: root.colorSpreadProgress > 0.0 ? root.colorSpreadOpacity : 0.0
-                    visible: root.colorSpreadReady && root.colorSpreadProgress > 0.0
+                Item {
+                    anchors.fill: parent
+                    visible: root.colorSpreadReady && root.colorSpreadHasMaskImage && root.colorSpreadProgress > 0.0
+
+                    Repeater {
+                        model: 8
+
+                        Item {
+                            id: colorSpreadSilhouette
+                            required property int index
+                            anchors.fill: parent
+                            opacity: root.colorSpreadOpacity * Math.max(0.0, 0.9 - index * 0.08 - root.colorSpreadProgress * 0.22)
+                            transform: Scale {
+                                origin.x: colorSpreadSilhouette.width * root.colorSpreadOriginX
+                                origin.y: colorSpreadSilhouette.height * root.colorSpreadOriginY
+                                xScale: root.colorSpreadSilhouetteScale(colorSpreadSilhouette.index)
+                                yScale: root.colorSpreadSilhouetteScale(colorSpreadSilhouette.index)
+                            }
+
+                            Image {
+                                id: silhouetteMask
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                source: root.colorSpreadMaskUrl
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                cache: false
+                                visible: false
+                            }
+
+                            ColorOverlay {
+                                anchors.fill: silhouetteMask
+                                source: silhouetteMask
+                                color: root.colorSpreadColor
+                            }
+                        }
+                    }
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        source: root.colorSpreadMaskUrl
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        cache: false
+                        opacity: 1.0
+                    }
                 }
 
                 Item {

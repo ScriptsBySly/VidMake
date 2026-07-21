@@ -227,6 +227,10 @@ ApplicationWindow {
             statusMessage = "Create a mask layer for this visual before adding color spread"
             return
         }
+        if (!selectedMaskHasCutout(analysisVisualPath, colorSpreadMaskLayer.currentIndex)) {
+            statusMessage = "Re-analyze this mask so color spread can use its keyed area"
+            return
+        }
         if (!/^#[0-9a-fA-F]{6}$/.test(colorSpreadColor1.text) || !/^#[0-9a-fA-F]{6}$/.test(colorSpreadColor2.text)) {
             statusMessage = "Color spread colors must use #rrggbb"
             return
@@ -694,7 +698,7 @@ ApplicationWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
-                    visible: editMaskMode.currentIndex === 1
+                    visible: (editingLayer.plugin === "builtin.color_spread" || editMaskMode.currentIndex === 1)
                         && editMaskLayer.count > 0
                         && !selectedMaskHasCutout(editingLayer.source_visual_path || "", editMaskLayer.currentIndex)
                 }
@@ -1058,6 +1062,17 @@ ApplicationWindow {
                 model: maskLayersForVisual(analysisVisualPath)
                 textRole: "name"
                 enabled: count > 0
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Re-analyze this mask so color spread can use its keyed area."
+                color: "#b45309"
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                visible: colorSpreadMaskLayer.count > 0
+                    && !selectedMaskHasCutout(analysisVisualPath, colorSpreadMaskLayer.currentIndex)
             }
 
             Text {
