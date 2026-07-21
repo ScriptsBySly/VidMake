@@ -159,6 +159,16 @@ Panel {
         return ""
     }
 
+    function latestVisualAsset() {
+        for (var i = assetModel.count - 1; i >= 0; i--) {
+            var asset = assetModel.get(i)
+            if (asset.kind === "Visual") {
+                return { "name": asset.name, "path": asset.path }
+            }
+        }
+        return { "name": "", "path": "" }
+    }
+
     FileDialog {
         id: audioDialog
         title: "Import audio"

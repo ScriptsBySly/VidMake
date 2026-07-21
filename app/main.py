@@ -11,9 +11,11 @@ from PySide6.QtQml import QQmlApplicationEngine
 try:
     from app.audio.analysis_controller import AudioAnalysisController
     from app.core.project_controller import ProjectController
+    from app.video.video_analysis_controller import VideoAnalysisController
 except ModuleNotFoundError:
     from audio.analysis_controller import AudioAnalysisController
     from core.project_controller import ProjectController
+    from video.video_analysis_controller import VideoAnalysisController
 
 
 def main() -> int:
@@ -29,8 +31,10 @@ def main() -> int:
     engine = QQmlApplicationEngine()
     project_controller = ProjectController()
     audio_analysis_controller = AudioAnalysisController()
+    video_analysis_controller = VideoAnalysisController(Path.cwd() / ".vidmake-cache" / "masks")
     engine.rootContext().setContextProperty("projectController", project_controller)
     engine.rootContext().setContextProperty("audioAnalysisController", audio_analysis_controller)
+    engine.rootContext().setContextProperty("videoAnalysisController", video_analysis_controller)
 
     qml_path = Path(__file__).resolve().parent / "ui" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))

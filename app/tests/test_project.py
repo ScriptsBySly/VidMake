@@ -70,3 +70,24 @@ def test_validate_project_preserves_audio_keyframe_layers() -> None:
     validated = validate_project(project)
 
     assert validated["audio_keyframe_layers"][0]["keyframes"][0]["frame_number"] == 15
+
+
+def test_validate_project_preserves_mask_layers() -> None:
+    project = empty_project()
+    project["mask_layers"] = [
+        {
+            "id": "mask-1",
+            "name": "Green screen mask",
+            "source_video_name": "clip.mp4",
+            "source_video_path": "H:/media/clip.mp4",
+            "source_type": "video",
+            "key_color": "#00ff00",
+            "tolerance": 0.28,
+            "inverted": False,
+            "preview_path": "H:/.vidmake-cache/masks/mask-preview.png",
+        }
+    ]
+
+    validated = validate_project(project)
+
+    assert validated["mask_layers"][0]["key_color"] == "#00ff00"

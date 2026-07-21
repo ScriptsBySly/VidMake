@@ -16,6 +16,7 @@ Panel {
     signal playbackToggled()
     property var cachedAssets: []
     property var cachedKeyframeLayers: []
+    property var cachedMaskLayers: []
 
     function formatTime(milliseconds) {
         var total = Math.max(0, Math.floor(milliseconds / 1000))
@@ -29,6 +30,9 @@ Panel {
         if (kind === "Keyframes") {
             return "#496f48"
         }
+        if (kind === "Mask") {
+            return "#5b4b8a"
+        }
         return kind === "Audio" ? "#b45309" : "#2b5361"
     }
 
@@ -38,6 +42,9 @@ Panel {
         }
         if (kind === "Keyframes") {
             return "#8fb889"
+        }
+        if (kind === "Mask") {
+            return "#a99be0"
         }
         return kind === "Audio" ? Theme.audioStroke : "#6dbad0"
     }
@@ -62,6 +69,15 @@ Panel {
                 "start": 0
             })
         }
+        for (var k = 0; k < cachedMaskLayers.length; k++) {
+            var mask = cachedMaskLayers[k]
+            timelineModel.append({
+                "name": mask.name,
+                "kind": "Mask",
+                "path": mask.id,
+                "start": 0
+            })
+        }
     }
 
     function loadAssets(items) {
@@ -71,6 +87,11 @@ Panel {
 
     function loadKeyframeLayers(layers) {
         cachedKeyframeLayers = layers
+        rebuildTimeline()
+    }
+
+    function loadMaskLayers(layers) {
+        cachedMaskLayers = layers
         rebuildTimeline()
     }
 
@@ -268,7 +289,7 @@ Panel {
                             hoverEnabled: false
                             acceptedButtons: Qt.LeftButton
                             onClicked: {
-                                if (kind !== "Keyframes") {
+                                if (kind !== "Keyframes" && kind !== "Mask") {
                                     root.assetSelected(name, kind, path)
                                 }
                             }

@@ -19,6 +19,9 @@ ApplicationWindow {
     property int timelineDuration: 15000
     property string audioAssetPath: ""
     property var audioKeyframeLayers: []
+    property string analysisVisualName: ""
+    property string analysisVisualPath: ""
+    property var maskLayers: []
 
     width: 1440
     height: 900
@@ -39,6 +42,9 @@ ApplicationWindow {
         window.audioAssetName = audio
         window.visualAssetName = visual
         window.audioAssetPath = assetPanel.latestAssetPath("Audio")
+        var visualAsset = assetPanel.latestVisualAsset()
+        window.analysisVisualName = visualAsset.name
+        window.analysisVisualPath = visualAsset.path
     }
 
     function projectData() {
@@ -51,13 +57,15 @@ ApplicationWindow {
                 "duration": 15.0
             },
             "assets": assetPanel.assets(),
-            "audio_keyframe_layers": audioKeyframeLayers
+            "audio_keyframe_layers": audioKeyframeLayers,
+            "mask_layers": maskLayers
         }
     }
 
     function applyProject(data, path) {
         assetPanel.loadAssets(data.assets || [])
         audioKeyframeLayers = data.audio_keyframe_layers || []
+        maskLayers = data.mask_layers || []
         syncTimelineAssets()
         refreshLatestAssetNames()
         selectedAssetName = ""
@@ -75,6 +83,7 @@ ApplicationWindow {
             var assets = assetPanel.assets()
             timelinePanel.loadAssets(assets)
             timelinePanel.loadKeyframeLayers(audioKeyframeLayers)
+            timelinePanel.loadMaskLayers(maskLayers)
             previewPanel.loadCompositionAssets(assets)
         }
     }
@@ -84,6 +93,15 @@ ApplicationWindow {
         var layers = audioKeyframeLayers.slice(0)
         layers.push(layer)
         audioKeyframeLayers = layers
+        syncTimelineAssets()
+        statusMessage = "Created " + layer.name
+    }
+
+    function addMaskLayer(layerJson) {
+        var layer = JSON.parse(layerJson)
+        var layers = maskLayers.slice(0)
+        layers.push(layer)
+        maskLayers = layers
         syncTimelineAssets()
         statusMessage = "Created " + layer.name
     }
@@ -194,6 +212,17 @@ ApplicationWindow {
         }
     }
 
+    VideoAnalysisDialog {
+        id: videoAnalysisDialog
+        videoName: window.analysisVisualName
+        videoPath: window.analysisVisualPath
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        onMaskLayerCreated: function(layerJson) {
+            window.addMaskLayer(layerJson)
+        }
+    }
+
     Connections {
         target: projectController
         function onStatusChanged(message) {
@@ -299,6 +328,14 @@ ApplicationWindow {
                 onClicked: analysisDialog.open()
             }
 
+            ToolButton {
+                text: "\uE8B9"
+                font.family: "Segoe MDL2 Assets"
+                ToolTip.visible: hovered
+                ToolTip.text: "Analyze visual"
+                onClicked: videoAnalysisDialog.open()
+            }
+
             Text {
                 text: statusMessage
                 color: Theme.subtleText
@@ -342,12 +379,19 @@ ApplicationWindow {
                 }
                 onVisualImported: function(name, path) {
                     window.visualAssetName = name
+                    var visualAsset = assetPanel.latestVisualAsset()
+                    window.analysisVisualName = visualAsset.name
+                    window.analysisVisualPath = visualAsset.path
                     window.syncTimelineAssets()
                 }
                 onAssetSelected: function(name, kind, path) {
                     window.selectedAssetName = name
                     window.selectedAssetKind = kind
                     window.selectedAssetPath = path
+                    if (kind === "Visual") {
+                        window.analysisVisualName = name
+                        window.analysisVisualPath = path
+                    }
                     window.timelinePlayheadPosition = 0
                 }
                 onAudioDeleted: function(name, path) {
@@ -361,6 +405,9 @@ ApplicationWindow {
                     if (window.visualAssetName === name) {
                         window.visualAssetName = assetPanel.latestAssetName("Visual")
                     }
+                    var visualAsset = assetPanel.latestVisualAsset()
+                    window.analysisVisualName = visualAsset.name
+                    window.analysisVisualPath = visualAsset.path
                     window.syncTimelineAssets()
                 }
             }
@@ -409,6 +456,10 @@ ApplicationWindow {
                         window.selectedAssetName = name
                         window.selectedAssetKind = kind
                         window.selectedAssetPath = path
+                        if (kind === "Visual") {
+                            window.analysisVisualName = name
+                            window.analysisVisualPath = path
+                        }
                         window.timelinePlayheadPosition = 0
                     }
                     onSeekRequested: function(milliseconds) {
