@@ -72,6 +72,7 @@ Panel {
     readonly property bool colorSpreadHasMaskImage: colorSpreadMaskUrl.length > 0
     readonly property real colorSpreadProgress: colorSpreadProgressValue()
     readonly property string colorSpreadColor: colorSpreadCurrentColor()
+    readonly property var colorSpreadBursts: colorSpreadBurstModel()
     readonly property real colorSpreadOriginX: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_x || 0.5 : 0.5
     readonly property real colorSpreadOriginY: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_y || 0.5 : 0.5
     readonly property real colorSpreadOpacity: colorSpreadReady ? Math.max(0.0, 0.46 * (1.0 - colorSpreadProgress * 0.2)) : 0.0
@@ -409,6 +410,68 @@ Panel {
         return 1.0 + (colorSpreadMaxScale() - 1.0) * delayedProgress
     }
 
+    function colorSpreadSilhouetteScaleForProgress(progress, index) {
+        var delayedProgress = Math.max(0.0, Math.min(1.0, progress - index * 0.045))
+        return 1.0 + (colorSpreadMaxScale() - 1.0) * delayedProgress
+    }
+
+    function colorSpreadBurstModel() {
+        var effect = activeColorSpreadEffect
+        if (!effect || !activeColorSpreadMaskLayer) {
+            return []
+        }
+        if (!effect.finish_spread) {
+            var currentProgress = colorSpreadProgressValue()
+            if (currentProgress <= 0.0) {
+                return []
+            }
+            return [{
+                "progress": currentProgress,
+                "color": colorSpreadCurrentColor()
+            }]
+        }
+
+        var durationMs = Math.max(50, effect.spread_duration_seconds * 1000.0)
+        var durationSeconds = durationMs / 1000.0
+        var nowSeconds = currentPosition / 1000.0
+        var bursts = []
+        if ((effect.trigger_mode || "interval") === "keyframes") {
+            var layer = audioKeyframeLayerById(effect.keyframe_layer_id || "")
+            if (!layer || !layer.keyframes || layer.keyframes.length === 0) {
+                return []
+            }
+            for (var i = 0; i < layer.keyframes.length; i++) {
+                var timeSeconds = layer.keyframes[i].time_seconds || 0.0
+                if (timeSeconds > nowSeconds) {
+                    break
+                }
+                var delta = nowSeconds - timeSeconds
+                if (delta <= durationSeconds) {
+                    bursts.push({
+                        "progress": Math.max(0.0, Math.min(1.0, delta / durationSeconds)),
+                        "color": i % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
+                    })
+                }
+            }
+            return bursts
+        }
+
+        var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
+        var currentCycle = Math.floor(currentPosition / intervalMs)
+        var lookbackCycles = Math.ceil(durationMs / intervalMs)
+        for (var cycle = Math.max(0, currentCycle - lookbackCycles); cycle <= currentCycle; cycle++) {
+            var triggerMs = cycle * intervalMs
+            var ageMs = currentPosition - triggerMs
+            if (ageMs >= 0 && ageMs <= durationMs) {
+                bursts.push({
+                    "progress": Math.max(0.0, Math.min(1.0, ageMs / durationMs)),
+                    "color": cycle % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
+                })
+            }
+        }
+        return bursts
+    }
+
     function zoomBlurPulseValue() {
         var effect = activeZoomBlurEffect
         if (!effect) {
@@ -697,39 +760,53 @@ Panel {
 
                 Item {
                     anchors.fill: parent
-                    visible: root.colorSpreadReady && root.colorSpreadHasMaskImage && root.colorSpreadProgress > 0.0
+                    visible: root.colorSpreadReady && root.colorSpreadHasMaskImage && root.colorSpreadBursts.length > 0
 
                     Repeater {
-                        model: 8
+                        model: root.colorSpreadBursts
 
                         Item {
-                            id: colorSpreadSilhouette
-                            required property int index
+                            id: colorSpreadBurst
+                            required property var modelData
+                            readonly property real burstProgress: modelData.progress || 0.0
+                            readonly property string burstColor: modelData.color || root.colorSpreadColor
+                            readonly property real burstOpacity: Math.max(0.0, 0.46 * (1.0 - burstProgress))
                             anchors.fill: parent
-                            opacity: root.colorSpreadOpacity * Math.max(0.0, 0.9 - index * 0.08 - root.colorSpreadProgress * 0.22)
-                            transform: Scale {
-                                origin.x: colorSpreadSilhouette.width * root.colorSpreadOriginX
-                                origin.y: colorSpreadSilhouette.height * root.colorSpreadOriginY
-                                xScale: root.colorSpreadSilhouetteScale(colorSpreadSilhouette.index)
-                                yScale: root.colorSpreadSilhouetteScale(colorSpreadSilhouette.index)
+
+                            Repeater {
+                                model: 8
+
+                                Item {
+                                    id: colorSpreadSilhouette
+                                    required property int index
+                                    anchors.fill: parent
+                                    opacity: colorSpreadBurst.burstOpacity * Math.max(0.0, 0.9 - index * 0.08 - colorSpreadBurst.burstProgress * 0.22)
+                                    transform: Scale {
+                                        origin.x: colorSpreadSilhouette.width * root.colorSpreadOriginX
+                                        origin.y: colorSpreadSilhouette.height * root.colorSpreadOriginY
+                                        xScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress, colorSpreadSilhouette.index)
+                                        yScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress, colorSpreadSilhouette.index)
+                                    }
+
+                                    Image {
+                                        id: silhouetteMask
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        source: root.colorSpreadMaskUrl
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                        cache: false
+                                        visible: false
+                                    }
+
+                                    ColorOverlay {
+                                        anchors.fill: silhouetteMask
+                                        source: silhouetteMask
+                                        color: colorSpreadBurst.burstColor
+                                    }
+                                }
                             }
 
-                            Image {
-                                id: silhouetteMask
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                source: root.colorSpreadMaskUrl
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
-                                cache: false
-                                visible: false
-                            }
-
-                            ColorOverlay {
-                                anchors.fill: silhouetteMask
-                                source: silhouetteMask
-                                color: root.colorSpreadColor
-                            }
                         }
                     }
 

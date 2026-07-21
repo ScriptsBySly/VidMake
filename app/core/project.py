@@ -78,6 +78,7 @@ class EffectLayer:
     color_1: str
     color_2: str
     spread_duration_seconds: float
+    finish_spread: bool
 
 
 @dataclass(frozen=True)
@@ -294,6 +295,7 @@ def validate_project(data: Any) -> dict[str, Any]:
                 "color_1": color_1,
                 "color_2": color_2,
                 "spread_duration_seconds": max(0.05, float(layer.get("spread_duration_seconds", 0.8))),
+                "finish_spread": bool(layer.get("finish_spread", False)),
             }
         )
 

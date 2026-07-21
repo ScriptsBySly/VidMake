@@ -144,6 +144,7 @@ def test_validate_project_preserves_color_spread_effect_layers() -> None:
             "mask_layer_id": "mask-1",
             "trigger_interval_seconds": 0.75,
             "spread_duration_seconds": 0.9,
+            "finish_spread": True,
             "color_1": "#00c8ff",
             "color_2": "#ff4fd8",
         }
@@ -156,6 +157,7 @@ def test_validate_project_preserves_color_spread_effect_layers() -> None:
     assert validated["effect_layers"][0]["mask_layer_id"] == "mask-1"
     assert validated["effect_layers"][0]["color_1"] == "#00c8ff"
     assert validated["effect_layers"][0]["color_2"] == "#ff4fd8"
+    assert validated["effect_layers"][0]["finish_spread"] is True
 
 
 def test_validate_project_preserves_color_spread_keyframe_trigger() -> None:
