@@ -5,6 +5,9 @@ import "components"
 
 ApplicationWindow {
     id: window
+    property string audioAssetName: ""
+    property string visualAssetName: ""
+
     width: 1440
     height: 900
     minimumWidth: 980
@@ -94,6 +97,22 @@ ApplicationWindow {
                 Layout.minimumWidth: 280
                 Layout.maximumWidth: 390
                 Layout.fillHeight: true
+                onAudioImported: function(name, path) {
+                    window.audioAssetName = name
+                }
+                onVisualImported: function(name, path) {
+                    window.visualAssetName = name
+                }
+                onAudioDeleted: function(name, path) {
+                    if (window.audioAssetName === name) {
+                        window.audioAssetName = ""
+                    }
+                }
+                onVisualDeleted: function(name, path) {
+                    if (window.visualAssetName === name) {
+                        window.visualAssetName = ""
+                    }
+                }
             }
 
             SplitView {
@@ -115,6 +134,7 @@ ApplicationWindow {
                 }
 
                 PreviewPanel {
+                    visualName: window.visualAssetName
                     SplitView.fillWidth: true
                     SplitView.fillHeight: true
                     SplitView.minimumHeight: 320
@@ -122,6 +142,8 @@ ApplicationWindow {
                 }
 
                 TimelinePanel {
+                    audioName: window.audioAssetName
+                    visualName: window.visualAssetName
                     SplitView.fillWidth: true
                     SplitView.minimumHeight: 210
                     SplitView.preferredHeight: 290

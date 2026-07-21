@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Panel {
     id: root
     title: "Timeline"
+    property string audioName: ""
+    property string visualName: ""
 
     ColumnLayout {
         anchors.fill: parent
@@ -89,7 +91,7 @@ Panel {
                     height: 44
                     label: "Visual"
                     clipColor: "#2b5361"
-                    clipName: "Media layer"
+                    clipName: root.visualName.length > 0 ? root.visualName : "Media layer"
                     clipStart: 0.04
                     clipWidth: 0.82
                 }
@@ -109,7 +111,7 @@ Panel {
                     height: 44
                     label: "Audio"
                     clipColor: "#6b4d89"
-                    clipName: "Song"
+                    clipName: root.audioName.length > 0 ? root.audioName : "Song"
                     clipStart: 0.04
                     clipWidth: 0.82
                 }

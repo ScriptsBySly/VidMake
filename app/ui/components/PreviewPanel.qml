@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Panel {
     id: root
     title: "Preview"
+    property string visualName: ""
 
     ColumnLayout {
         anchors.fill: parent
@@ -52,10 +53,13 @@ Panel {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 18
-                    text: "1080 x 1920"
+                    text: root.visualName.length > 0 ? root.visualName : "1080 x 1920"
                     color: "#a9adb7"
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
+                    width: parent.width - 28
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideMiddle
                 }
             }
         }

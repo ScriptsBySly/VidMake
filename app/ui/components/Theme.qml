@@ -32,4 +32,10 @@ QtObject {
     readonly property color accentPressed: "#0f548c"
     readonly property color accentBorder: "#0b5cab"
     readonly property color accentSoft: "#d8ebff"
+
+    readonly property color audioAccent: "#b45309"
+    readonly property color audioSurface: "#fff8ef"
+    readonly property color audioSurfaceHover: "#fff1dd"
+    readonly property color audioTile: "#ffe6c7"
+    readonly property color audioStroke: "#f2c28e"
 }
