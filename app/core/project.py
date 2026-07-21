@@ -26,10 +26,23 @@ class ProjectAsset:
 
 
 @dataclass(frozen=True)
+class AudioKeyframeLayer:
+    id: str
+    name: str
+    source_audio_name: str
+    source_audio_path: str
+    band_name: str
+    low_hz: float
+    high_hz: float
+    keyframes: list[dict[str, float | int]]
+
+
+@dataclass(frozen=True)
 class Project:
     format_version: int = FORMAT_VERSION
     settings: ProjectSettings = field(default_factory=ProjectSettings)
     assets: list[ProjectAsset] = field(default_factory=list)
+    audio_keyframe_layers: list[AudioKeyframeLayer] = field(default_factory=list)
 
 
 def empty_project() -> dict[str, Any]:
@@ -52,6 +65,10 @@ def validate_project(data: Any) -> dict[str, Any]:
     if not isinstance(assets, list):
         raise ValueError("Project assets must be a list.")
 
+    audio_keyframe_layers = data.get("audio_keyframe_layers", [])
+    if not isinstance(audio_keyframe_layers, list):
+        raise ValueError("Project audio keyframe layers must be a list.")
+
     validated_assets: list[dict[str, str]] = []
     for index, asset in enumerate(assets):
         if not isinstance(asset, dict):
@@ -67,6 +84,56 @@ def validate_project(data: Any) -> dict[str, Any]:
             raise ValueError(f"Asset #{index + 1} is missing a path.")
         validated_assets.append({"name": name, "kind": kind, "path": path})
 
+    validated_keyframe_layers: list[dict[str, Any]] = []
+    for index, layer in enumerate(audio_keyframe_layers):
+        if not isinstance(layer, dict):
+            raise ValueError(f"Audio keyframe layer #{index + 1} must be an object.")
+        layer_id = layer.get("id")
+        name = layer.get("name")
+        source_audio_name = layer.get("source_audio_name")
+        source_audio_path = layer.get("source_audio_path")
+        band_name = layer.get("band_name")
+        keyframes = layer.get("keyframes", [])
+        if not isinstance(layer_id, str) or not layer_id:
+            raise ValueError(f"Audio keyframe layer #{index + 1} is missing an id.")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"Audio keyframe layer #{index + 1} is missing a name.")
+        if not isinstance(source_audio_name, str):
+            raise ValueError(f"Audio keyframe layer #{index + 1} has an invalid source audio name.")
+        if not isinstance(source_audio_path, str) or not source_audio_path:
+            raise ValueError(f"Audio keyframe layer #{index + 1} is missing a source audio path.")
+        if not isinstance(band_name, str) or not band_name:
+            raise ValueError(f"Audio keyframe layer #{index + 1} is missing a band name.")
+        if not isinstance(keyframes, list):
+            raise ValueError(f"Audio keyframe layer #{index + 1} keyframes must be a list.")
+
+        validated_keyframes: list[dict[str, float | int]] = []
+        for keyframe_index, keyframe in enumerate(keyframes):
+            if not isinstance(keyframe, dict):
+                raise ValueError(
+                    f"Audio keyframe layer #{index + 1} keyframe #{keyframe_index + 1} must be an object."
+                )
+            validated_keyframes.append(
+                {
+                    "time_seconds": float(keyframe.get("time_seconds", 0.0)),
+                    "frame_number": int(keyframe.get("frame_number", 0)),
+                    "value": float(keyframe.get("value", keyframe.get("strength", 1.0))),
+                }
+            )
+
+        validated_keyframe_layers.append(
+            {
+                "id": layer_id,
+                "name": name,
+                "source_audio_name": source_audio_name,
+                "source_audio_path": source_audio_path,
+                "band_name": band_name,
+                "low_hz": float(layer.get("low_hz", 0.0)),
+                "high_hz": float(layer.get("high_hz", 0.0)),
+                "keyframes": validated_keyframes,
+            }
+        )
+
     width = int(settings.get("width", 1080))
     height = int(settings.get("height", 1920))
     if (width, height) not in SUPPORTED_RESOLUTIONS:
@@ -81,6 +148,7 @@ def validate_project(data: Any) -> dict[str, Any]:
             "duration": float(settings.get("duration", 15.0)),
         },
         "assets": validated_assets,
+        "audio_keyframe_layers": validated_keyframe_layers,
     }
 
 

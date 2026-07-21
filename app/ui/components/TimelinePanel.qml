@@ -14,6 +14,8 @@ Panel {
     signal assetSelected(string name, string kind, string path)
     signal seekRequested(int milliseconds)
     signal playbackToggled()
+    property var cachedAssets: []
+    property var cachedKeyframeLayers: []
 
     function formatTime(milliseconds) {
         var total = Math.max(0, Math.floor(milliseconds / 1000))
@@ -24,6 +26,9 @@ Panel {
     }
 
     function clipColor(kind) {
+        if (kind === "Keyframes") {
+            return "#496f48"
+        }
         return kind === "Audio" ? "#b45309" : "#2b5361"
     }
 
@@ -31,13 +36,16 @@ Panel {
         if (selected) {
             return kind === "Audio" ? "#7c2d12" : Theme.accent
         }
+        if (kind === "Keyframes") {
+            return "#8fb889"
+        }
         return kind === "Audio" ? Theme.audioStroke : "#6dbad0"
     }
 
-    function loadAssets(items) {
+    function rebuildTimeline() {
         timelineModel.clear()
-        for (var i = 0; i < items.length; i++) {
-            var asset = items[i]
+        for (var i = 0; i < cachedAssets.length; i++) {
+            var asset = cachedAssets[i]
             timelineModel.append({
                 "name": asset.name,
                 "kind": asset.kind,
@@ -45,6 +53,25 @@ Panel {
                 "start": 0
             })
         }
+        for (var j = 0; j < cachedKeyframeLayers.length; j++) {
+            var layer = cachedKeyframeLayers[j]
+            timelineModel.append({
+                "name": layer.name + " (" + layer.keyframes.length + ")",
+                "kind": "Keyframes",
+                "path": layer.id,
+                "start": 0
+            })
+        }
+    }
+
+    function loadAssets(items) {
+        cachedAssets = items
+        rebuildTimeline()
+    }
+
+    function loadKeyframeLayers(layers) {
+        cachedKeyframeLayers = layers
+        rebuildTimeline()
     }
 
     ListModel {
@@ -240,7 +267,11 @@ Panel {
                             anchors.fill: parent
                             hoverEnabled: false
                             acceptedButtons: Qt.LeftButton
-                            onClicked: root.assetSelected(name, kind, path)
+                            onClicked: {
+                                if (kind !== "Keyframes") {
+                                    root.assetSelected(name, kind, path)
+                                }
+                            }
                         }
                     }
                 }

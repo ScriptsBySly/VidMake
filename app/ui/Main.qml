@@ -18,6 +18,7 @@ ApplicationWindow {
     property int timelinePlayheadPosition: 0
     property int timelineDuration: 15000
     property string audioAssetPath: ""
+    property var audioKeyframeLayers: []
 
     width: 1440
     height: 900
@@ -49,12 +50,14 @@ ApplicationWindow {
                 "frame_rate": 30,
                 "duration": 15.0
             },
-            "assets": assetPanel.assets()
+            "assets": assetPanel.assets(),
+            "audio_keyframe_layers": audioKeyframeLayers
         }
     }
 
     function applyProject(data, path) {
         assetPanel.loadAssets(data.assets || [])
+        audioKeyframeLayers = data.audio_keyframe_layers || []
         syncTimelineAssets()
         refreshLatestAssetNames()
         selectedAssetName = ""
@@ -71,8 +74,18 @@ ApplicationWindow {
         if (timelinePanel) {
             var assets = assetPanel.assets()
             timelinePanel.loadAssets(assets)
+            timelinePanel.loadKeyframeLayers(audioKeyframeLayers)
             previewPanel.loadCompositionAssets(assets)
         }
+    }
+
+    function addAudioKeyframeLayer(layerJson) {
+        var layer = JSON.parse(layerJson)
+        var layers = audioKeyframeLayers.slice(0)
+        layers.push(layer)
+        audioKeyframeLayers = layers
+        syncTimelineAssets()
+        statusMessage = "Created " + layer.name
     }
 
     function newProject() {
@@ -176,6 +189,9 @@ ApplicationWindow {
         projectFrameRate: 30
         x: Math.round((window.width - width) / 2)
         y: Math.round((window.height - height) / 2)
+        onKeyframeLayerCreated: function(layerJson) {
+            window.addAudioKeyframeLayer(layerJson)
+        }
     }
 
     Connections {

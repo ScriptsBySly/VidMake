@@ -48,3 +48,25 @@ def test_validate_project_accepts_horizontal_resolution() -> None:
 
     assert validated["settings"]["width"] == 1920
     assert validated["settings"]["height"] == 1080
+
+
+def test_validate_project_preserves_audio_keyframe_layers() -> None:
+    project = empty_project()
+    project["audio_keyframe_layers"] = [
+        {
+            "id": "audio-keyframes-1",
+            "name": "Kick markers",
+            "source_audio_name": "song.wav",
+            "source_audio_path": "H:/media/song.wav",
+            "band_name": "Kick / bass",
+            "low_hz": 60,
+            "high_hz": 160,
+            "keyframes": [
+                {"time_seconds": 0.5, "frame_number": 15, "value": 0.82},
+            ],
+        }
+    ]
+
+    validated = validate_project(project)
+
+    assert validated["audio_keyframe_layers"][0]["keyframes"][0]["frame_number"] == 15

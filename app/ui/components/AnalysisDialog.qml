@@ -13,9 +13,11 @@ Dialog {
     property var ranges: JSON.parse(audioAnalysisController.suggestedRangesJson())
     property int selectedRangeIndex: 1
     property bool seeking: false
+    property real analysisZoom: 1.0
     readonly property string audioUrl: audioPath.length > 0 ? pathToUrl(audioPath) : ""
     readonly property bool canPlay: audioPath.length > 0 && !analyzing
     readonly property bool isPlaying: analysisPlayer.playbackState === MediaPlayer.PlayingState
+    signal keyframeLayerCreated(string layerJson)
 
     title: "Audio Analysis"
     modal: false
@@ -39,6 +41,32 @@ Dialog {
             "frame_rate": projectFrameRate
         }
         audioAnalysisController.analyze(audioPath, JSON.stringify(settings))
+    }
+
+    function createKeyframeLayer() {
+        var markers = analysisResult.markers || []
+        if (markers.length === 0) {
+            return
+        }
+        var settings = analysisResult.settings || {}
+        var layer = {
+            "id": "audio-keyframes-" + Date.now(),
+            "name": (settings.band_name || "Audio") + " keyframes",
+            "source_audio_name": audioName,
+            "source_audio_path": audioPath,
+            "band_name": settings.band_name || "Audio",
+            "low_hz": settings.low_hz || 0,
+            "high_hz": settings.high_hz || 0,
+            "keyframes": []
+        }
+        for (var i = 0; i < markers.length; i++) {
+            layer.keyframes.push({
+                "time_seconds": markers[i].time_seconds,
+                "frame_number": markers[i].frame_number,
+                "value": markers[i].strength
+            })
+        }
+        root.keyframeLayerCreated(JSON.stringify(layer))
     }
 
     function pathToUrl(path) {
@@ -76,6 +104,24 @@ Dialog {
             return
         }
         analysisPlayer.position = Math.max(0, Math.min(Math.max(1, analysisPlayer.duration), milliseconds))
+    }
+
+    function setAnalysisZoom(value) {
+        analysisZoom = Math.max(1.0, Math.min(12.0, value))
+        waveformCanvas.requestPaint()
+    }
+
+    function keepPlayheadVisible() {
+        if (analysisZoom <= 1.0 || analysisPlayer.duration <= 0) {
+            return
+        }
+        var playheadX = analysisPlayer.position / analysisPlayer.duration * waveformCanvas.width
+        var margin = analysisFlick.width * 0.2
+        if (playheadX < analysisFlick.contentX + margin) {
+            analysisFlick.contentX = Math.max(0, playheadX - margin)
+        } else if (playheadX > analysisFlick.contentX + analysisFlick.width - margin) {
+            analysisFlick.contentX = Math.min(waveformCanvas.width - analysisFlick.width, playheadX - analysisFlick.width + margin)
+        }
     }
 
     onAudioUrlChanged: {
@@ -123,6 +169,7 @@ Dialog {
             if (!root.seeking) {
                 playbackSlider.value = position
             }
+            root.keepPlayheadVisible()
             waveformCanvas.requestPaint()
         }
         onDurationChanged: {
@@ -180,6 +227,13 @@ Dialog {
                 accent: true
                 enabled: root.audioPath.length > 0 && !root.analyzing
                 onClicked: root.analyzeSelectedRange()
+            }
+
+            PillButton {
+                text: "Create"
+                iconText: "\uE710"
+                enabled: markerModel.count > 0 && !root.analyzing
+                onClicked: root.createKeyframeLayer()
             }
         }
 
@@ -285,7 +339,8 @@ Dialog {
                             ? analysisResult.error
                             : "Tempo " + (analysisResult.tempo_bpm || 0) + " BPM\n"
                                 + "Global beats " + (analysisResult.beat_count || 0) + "\n"
-                                + "Filtered markers " + (analysisResult.detected_beat_count || 0)
+                                + "Filtered markers " + (analysisResult.detected_beat_count || 0) + "\n"
+                                + "Keyframes ready " + markerModel.count
                         color: analysisResult.error ? "#b91c1c" : Theme.subtleText
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
@@ -362,7 +417,65 @@ Dialog {
                     }
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    IconButton {
+                        iconText: "\uE71F"
+                        tooltip: "Zoom out analysis"
+                        enabled: root.analysisZoom > 1.0
+                        onClicked: root.setAnalysisZoom(root.analysisZoom - 0.5)
+                    }
+
+                    Button {
+                        id: resetAnalysisZoomButton
+                        text: Math.round(root.analysisZoom * 100) + "%"
+                        implicitWidth: 62
+                        implicitHeight: 34
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Reset analysis zoom"
+                        onClicked: root.setAnalysisZoom(1.0)
+                        contentItem: Text {
+                            text: resetAnalysisZoomButton.text
+                            color: Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 6
+                            color: resetAnalysisZoomButton.down ? Theme.buttonPressed : resetAnalysisZoomButton.hovered ? Theme.buttonHover : Theme.button
+                            border.color: Theme.stroke
+                        }
+                    }
+
+                    IconButton {
+                        iconText: "\uE8A3"
+                        tooltip: "Zoom in analysis"
+                        enabled: root.analysisZoom < 12.0
+                        onClicked: root.setAnalysisZoom(root.analysisZoom + 0.5)
+                    }
+
+                    ScrollBar {
+                        id: analysisScrollBar
+                        Layout.fillWidth: true
+                        orientation: Qt.Horizontal
+                        size: Math.min(1.0, analysisViewport.width / Math.max(1, waveformCanvas.width))
+                        position: Math.min(1.0 - size, Math.max(0, analysisFlick.contentX / Math.max(1, waveformCanvas.width - analysisViewport.width)))
+                        active: hovered || pressed || root.analysisZoom > 1.0
+                        enabled: root.analysisZoom > 1.0
+                        onPositionChanged: {
+                            if (pressed) {
+                                analysisFlick.contentX = position * Math.max(1, waveformCanvas.width - analysisViewport.width)
+                            }
+                        }
+                    }
+                }
+
                 Rectangle {
+                    id: analysisViewport
                     Layout.fillWidth: true
                     Layout.preferredHeight: 188
                     radius: 8
@@ -370,52 +483,71 @@ Dialog {
                     border.color: Theme.strokeStrong
                     clip: true
 
-                    Canvas {
-                        id: waveformCanvas
+                    Flickable {
+                        id: analysisFlick
                         anchors.fill: parent
                         anchors.margins: 12
-                        onPaint: {
-                            var ctx = getContext("2d")
-                            ctx.clearRect(0, 0, width, height)
-                            ctx.fillStyle = "#111113"
-                            ctx.fillRect(0, 0, width, height)
+                        clip: true
+                        contentWidth: waveformCanvas.width
+                        contentHeight: height
+                        boundsBehavior: Flickable.StopAtBounds
+                        interactive: root.analysisZoom > 1.0
 
-                            var points = root.analysisResult.preview_points || []
-                            var duration = Math.max(0.001, root.analysisResult.duration_seconds || 15)
+                        Canvas {
+                            id: waveformCanvas
+                            width: Math.max(1, analysisFlick.width * root.analysisZoom)
+                            height: analysisFlick.height
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                ctx.clearRect(0, 0, width, height)
+                                ctx.fillStyle = "#111113"
+                                ctx.fillRect(0, 0, width, height)
 
-                            ctx.strokeStyle = "#6a737f"
-                            ctx.lineWidth = 1
-                            ctx.beginPath()
-                            for (var i = 0; i < points.length; i++) {
-                                var x = points[i].time_seconds / duration * width
-                                var y = height - points[i].energy * height
-                                if (i === 0) {
-                                    ctx.moveTo(x, y)
-                                } else {
-                                    ctx.lineTo(x, y)
+                                var points = root.analysisResult.preview_points || []
+                                var duration = Math.max(0.001, root.analysisResult.duration_seconds || 15)
+
+                                ctx.strokeStyle = "#6a737f"
+                                ctx.lineWidth = 1
+                                ctx.beginPath()
+                                for (var i = 0; i < points.length; i++) {
+                                    var x = points[i].time_seconds / duration * width
+                                    var y = height - points[i].energy * height
+                                    if (i === 0) {
+                                        ctx.moveTo(x, y)
+                                    } else {
+                                        ctx.lineTo(x, y)
+                                    }
+                                }
+                                ctx.stroke()
+
+                                var markers = root.analysisResult.markers || []
+                                ctx.strokeStyle = Theme.audioAccent
+                                ctx.lineWidth = 2
+                                for (var j = 0; j < markers.length; j++) {
+                                    var markerX = markers[j].time_seconds / duration * width
+                                    ctx.beginPath()
+                                    ctx.moveTo(markerX, 0)
+                                    ctx.lineTo(markerX, height)
+                                    ctx.stroke()
+                                }
+
+                                if (analysisPlayer.duration > 0) {
+                                    var playheadX = analysisPlayer.position / analysisPlayer.duration * width
+                                    ctx.strokeStyle = Theme.accent
+                                    ctx.lineWidth = 2
+                                    ctx.beginPath()
+                                    ctx.moveTo(playheadX, 0)
+                                    ctx.lineTo(playheadX, height)
+                                    ctx.stroke()
                                 }
                             }
-                            ctx.stroke()
+                        }
 
-                            var markers = root.analysisResult.markers || []
-                            ctx.strokeStyle = Theme.audioAccent
-                            ctx.lineWidth = 2
-                            for (var j = 0; j < markers.length; j++) {
-                                var markerX = markers[j].time_seconds / duration * width
-                                ctx.beginPath()
-                                ctx.moveTo(markerX, 0)
-                                ctx.lineTo(markerX, height)
-                                ctx.stroke()
-                            }
-
-                            if (analysisPlayer.duration > 0) {
-                                var playheadX = analysisPlayer.position / analysisPlayer.duration * width
-                                ctx.strokeStyle = Theme.accent
-                                ctx.lineWidth = 2
-                                ctx.beginPath()
-                                ctx.moveTo(playheadX, 0)
-                                ctx.lineTo(playheadX, height)
-                                ctx.stroke()
+                        WheelHandler {
+                            acceptedModifiers: Qt.ControlModifier
+                            onWheel: function(event) {
+                                root.setAnalysisZoom(root.analysisZoom + (event.angleDelta.y > 0 ? 0.5 : -0.5))
+                                event.accepted = true
                             }
                         }
                     }
