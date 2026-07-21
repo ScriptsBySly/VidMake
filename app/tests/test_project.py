@@ -156,3 +156,27 @@ def test_validate_project_preserves_color_spread_effect_layers() -> None:
     assert validated["effect_layers"][0]["mask_layer_id"] == "mask-1"
     assert validated["effect_layers"][0]["color_1"] == "#00c8ff"
     assert validated["effect_layers"][0]["color_2"] == "#ff4fd8"
+
+
+def test_validate_project_preserves_chroma_key_remove_effect_layers() -> None:
+    project = empty_project()
+    project["effect_layers"] = [
+        {
+            "id": "effect-3",
+            "name": "Remove chroma key",
+            "plugin": "builtin.chroma_key_remove",
+            "source_visual_name": "clip.mp4",
+            "source_visual_path": "H:/media/clip.mp4",
+            "trigger_mode": "interval",
+            "keyframe_layer_id": "",
+            "mask_mode": "mask",
+            "mask_layer_id": "mask-1",
+            "trigger_interval_seconds": 1.0,
+        }
+    ]
+
+    validated = validate_project(project)
+
+    assert validated["effect_layers"][0]["plugin"] == "builtin.chroma_key_remove"
+    assert validated["effect_layers"][0]["mask_mode"] == "mask"
+    assert validated["effect_layers"][0]["mask_layer_id"] == "mask-1"

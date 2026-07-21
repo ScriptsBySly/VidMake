@@ -252,6 +252,34 @@ ApplicationWindow {
         })
     }
 
+    function createChromaKeyRemoveEffect() {
+        if (analysisVisualPath.length === 0) {
+            statusMessage = "Select or import a visual asset before adding an effect"
+            return
+        }
+        var maskLayerId = maskLayerIdAtForVisual(analysisVisualPath, chromaRemoveMaskLayer.currentIndex)
+        if (maskLayerId.length === 0) {
+            statusMessage = "Create a mask layer for this visual before removing chroma key"
+            return
+        }
+        if (!selectedMaskHasCutout(analysisVisualPath, chromaRemoveMaskLayer.currentIndex)) {
+            statusMessage = "Re-analyze this mask so chroma key removal can use its keyed area"
+            return
+        }
+        addEffectLayer({
+            "id": "effect-" + Date.now(),
+            "name": chromaRemoveName.text,
+            "plugin": "builtin.chroma_key_remove",
+            "source_visual_name": analysisVisualName,
+            "source_visual_path": analysisVisualPath,
+            "trigger_mode": "interval",
+            "keyframe_layer_id": "",
+            "mask_mode": "mask",
+            "mask_layer_id": maskLayerId,
+            "trigger_interval_seconds": 1.0
+        })
+    }
+
     function findGeneratedLayer(kind, id) {
         var source = kind === "Keyframes" ? audioKeyframeLayers : kind === "Mask" ? maskLayers : effectLayers
         for (var i = 0; i < source.length; i++) {
@@ -351,16 +379,22 @@ ApplicationWindow {
             layer.inverted = editInverted.checked
         } else {
             var isColorSpread = layer.plugin === "builtin.color_spread"
-            var editMode = !isColorSpread && editTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
+            var isChromaRemove = layer.plugin === "builtin.chroma_key_remove"
+            var isMaskOnlyEffect = isColorSpread || isChromaRemove
+            var editMode = !isMaskOnlyEffect && editTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
             var editKeyframeLayerId = editMode === "keyframes" ? audioKeyframeLayerIdAt(editKeyframeLayer.currentIndex) : ""
             if (editMode === "keyframes" && editKeyframeLayerId.length === 0) {
                 statusMessage = "Create an audio keyframe layer before using beat keyframes"
                 return
             }
-            var editMaskModeValue = isColorSpread ? "mask" : editMaskMode.currentIndex === 1 ? "mask" : "none"
+            var editMaskModeValue = isMaskOnlyEffect ? "mask" : editMaskMode.currentIndex === 1 ? "mask" : "none"
             var editMaskLayerId = editMaskModeValue === "mask" ? maskLayerIdAtForVisual(layer.source_visual_path || "", editMaskLayer.currentIndex) : ""
             if (editMaskModeValue === "mask" && editMaskLayerId.length === 0) {
                 statusMessage = "Create a mask layer for this visual before using mask mode"
+                return
+            }
+            if (isMaskOnlyEffect && !selectedMaskHasCutout(layer.source_visual_path || "", editMaskLayer.currentIndex)) {
+                statusMessage = "Re-analyze this mask so the effect can use its keyed area"
                 return
             }
             if (isColorSpread && (!/^#[0-9a-fA-F]{6}$/.test(editColor1.text) || !/^#[0-9a-fA-F]{6}$/.test(editColor2.text))) {
@@ -633,14 +667,14 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin !== "builtin.color_spread"
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 ComboBox {
                     id: editTriggerMode
                     Layout.fillWidth: true
                     model: ["Manual interval", "Beat keyframes"]
-                    visible: editingLayer.plugin !== "builtin.color_spread"
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 Text {
@@ -648,7 +682,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin !== "builtin.color_spread" && editTriggerMode.currentIndex === 1
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 1
                 }
 
                 ComboBox {
@@ -657,11 +691,11 @@ ApplicationWindow {
                     model: audioKeyframeLayers
                     textRole: "name"
                     enabled: audioKeyframeLayers.length > 0
-                    visible: editingLayer.plugin !== "builtin.color_spread" && editTriggerMode.currentIndex === 1
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 1
                 }
 
                 Text {
-                    text: editingLayer.plugin === "builtin.color_spread" ? "Start mask" : "Effect area"
+                    text: editingLayer.plugin === "builtin.color_spread" ? "Start mask" : editingLayer.plugin === "builtin.chroma_key_remove" ? "Removal mask" : "Effect area"
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
@@ -671,7 +705,7 @@ ApplicationWindow {
                     id: editMaskMode
                     Layout.fillWidth: true
                     model: ["Entire visual", "Mask layer"]
-                    visible: editingLayer.plugin !== "builtin.color_spread"
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 Text {
@@ -679,7 +713,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin === "builtin.color_spread" || editMaskMode.currentIndex === 1
+                    visible: editingLayer.plugin === "builtin.color_spread" || editingLayer.plugin === "builtin.chroma_key_remove" || editMaskMode.currentIndex === 1
                 }
 
                 ComboBox {
@@ -688,7 +722,7 @@ ApplicationWindow {
                     model: maskLayersForVisual(editingLayer.source_visual_path || "")
                     textRole: "name"
                     enabled: count > 0
-                    visible: editingLayer.plugin === "builtin.color_spread" || editMaskMode.currentIndex === 1
+                    visible: editingLayer.plugin === "builtin.color_spread" || editingLayer.plugin === "builtin.chroma_key_remove" || editMaskMode.currentIndex === 1
                 }
 
                 Text {
@@ -698,7 +732,7 @@ ApplicationWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
-                    visible: (editingLayer.plugin === "builtin.color_spread" || editMaskMode.currentIndex === 1)
+                    visible: (editingLayer.plugin === "builtin.color_spread" || editingLayer.plugin === "builtin.chroma_key_remove" || editMaskMode.currentIndex === 1)
                         && editMaskLayer.count > 0
                         && !selectedMaskHasCutout(editingLayer.source_visual_path || "", editMaskLayer.currentIndex)
                 }
@@ -708,7 +742,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin === "builtin.color_spread" || editTriggerMode.currentIndex === 0
+                    visible: editingLayer.plugin === "builtin.color_spread" || (editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 0)
                 }
 
                 Slider {
@@ -718,7 +752,7 @@ ApplicationWindow {
                     to: 10
                     value: 1
                     stepSize: 0.1
-                    visible: editingLayer.plugin === "builtin.color_spread" || editTriggerMode.currentIndex === 0
+                    visible: editingLayer.plugin === "builtin.color_spread" || (editingLayer.plugin !== "builtin.chroma_key_remove" && editTriggerMode.currentIndex === 0)
                 }
 
                 Text {
@@ -780,7 +814,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin !== "builtin.color_spread"
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 Slider {
@@ -789,7 +823,7 @@ ApplicationWindow {
                     from: 0
                     to: 1
                     value: 0.35
-                    visible: editingLayer.plugin !== "builtin.color_spread"
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 Text {
@@ -797,7 +831,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editingLayer.plugin !== "builtin.color_spread"
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
 
                 Slider {
@@ -806,7 +840,7 @@ ApplicationWindow {
                     from: 1
                     to: 2
                     value: 1.12
-                    visible: editingLayer.plugin !== "builtin.color_spread"
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editingLayer.plugin !== "builtin.chroma_key_remove"
                 }
             }
         }
@@ -842,6 +876,16 @@ ApplicationWindow {
                 onClicked: {
                     effectPickerDialog.close()
                     colorSpreadDialog.open()
+                }
+            }
+
+            PillButton {
+                text: "Remove Chroma Key"
+                iconText: "\uE71C"
+                Layout.fillWidth: true
+                onClicked: {
+                    effectPickerDialog.close()
+                    chromaRemoveDialog.open()
                 }
             }
         }
@@ -1140,6 +1184,69 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.monoFamily
                 }
+            }
+        }
+    }
+
+    Dialog {
+        id: chromaRemoveDialog
+        title: "Remove Chroma Key"
+        modal: true
+        standardButtons: Dialog.Save | Dialog.Cancel
+        width: 430
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        onOpened: {
+            chromaRemoveName.text = "Remove chroma key"
+            chromaRemoveMaskLayer.currentIndex = maskLayersForVisual(analysisVisualPath).length > 0 ? 0 : -1
+        }
+        onAccepted: window.createChromaKeyRemoveEffect()
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Text {
+                text: analysisVisualName.length > 0 ? "Source: " + analysisVisualName : "Select a visual source first"
+                color: analysisVisualName.length > 0 ? Theme.subtleText : "#b91c1c"
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+                Layout.fillWidth: true
+            }
+
+            TextField {
+                id: chromaRemoveName
+                Layout.fillWidth: true
+                color: Theme.text
+                font.family: Theme.fontFamily
+                placeholderText: "Effect name"
+            }
+
+            Text {
+                text: "Removal mask"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            ComboBox {
+                id: chromaRemoveMaskLayer
+                Layout.fillWidth: true
+                model: maskLayersForVisual(analysisVisualPath)
+                textRole: "name"
+                enabled: count > 0
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Re-analyze this mask so chroma key removal can use its keyed area."
+                color: "#b45309"
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                visible: chromaRemoveMaskLayer.count > 0
+                    && !selectedMaskHasCutout(analysisVisualPath, chromaRemoveMaskLayer.currentIndex)
             }
         }
     }

@@ -68,6 +68,10 @@ Panel {
     readonly property real colorSpreadOriginX: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_x || 0.5 : 0.5
     readonly property real colorSpreadOriginY: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_y || 0.5 : 0.5
     readonly property real colorSpreadOpacity: colorSpreadReady ? Math.max(0.0, 0.46 * (1.0 - colorSpreadProgress * 0.2)) : 0.0
+    readonly property var activeChromaRemoveEffect: chromaRemoveEffectForCurrentVisual()
+    readonly property var activeChromaRemoveMaskLayer: maskLayerById(activeChromaRemoveEffect ? activeChromaRemoveEffect.mask_layer_id || "" : "")
+    readonly property bool chromaRemoveReady: activeChromaRemoveEffect !== null && activeChromaRemoveMaskLayer !== null && (activeChromaRemoveMaskLayer.cutout_path || "").length > 0
+    readonly property string chromaRemoveCutoutUrl: chromaRemoveReady ? pathToUrl(activeChromaRemoveMaskLayer.cutout_path) : ""
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -258,6 +262,20 @@ Panel {
         for (var i = compositionEffectLayers.length - 1; i >= 0; i--) {
             var effect = compositionEffectLayers[i]
             if (effect.plugin === "builtin.color_spread" && effect.source_visual_path === targetPath) {
+                return effect
+            }
+        }
+        return null
+    }
+
+    function chromaRemoveEffectForCurrentVisual() {
+        var targetPath = compositionMode ? compositionVisualPath : assetKind === "Visual" ? assetPath : ""
+        if (targetPath.length === 0) {
+            return null
+        }
+        for (var i = compositionEffectLayers.length - 1; i >= 0; i--) {
+            var effect = compositionEffectLayers[i]
+            if (effect.plugin === "builtin.chroma_key_remove" && effect.source_visual_path === targetPath) {
                 return effect
             }
         }
@@ -487,14 +505,14 @@ Panel {
                         id: assetVideoOutput
                         anchors.fill: parent
                         fillMode: VideoOutput.PreserveAspectFit
-                        visible: !root.compositionMode && root.isVideo
+                        visible: !root.chromaRemoveReady && !root.compositionMode && root.isVideo
                     }
 
                     VideoOutput {
                         id: compositionVideoOutput
                         anchors.fill: parent
                         fillMode: VideoOutput.PreserveAspectFit
-                        visible: root.compositionMode && root.compositionVisualIsVideo
+                        visible: !root.chromaRemoveReady && root.compositionMode && root.compositionVisualIsVideo
                     }
 
                     Image {
@@ -505,7 +523,17 @@ Panel {
                             : !root.compositionMode && root.isImage ? root.mediaUrl : ""
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
-                        visible: source.toString().length > 0
+                        visible: !root.chromaRemoveReady && source.toString().length > 0
+                    }
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        source: root.chromaRemoveCutoutUrl
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        cache: false
+                        visible: root.chromaRemoveReady
                     }
 
                     Column {

@@ -250,7 +250,7 @@ def validate_project(data: Any) -> dict[str, Any]:
             raise ValueError(f"Effect layer #{index + 1} is missing an id.")
         if not isinstance(name, str) or not name:
             raise ValueError(f"Effect layer #{index + 1} is missing a name.")
-        if plugin not in {"builtin.zoom_blur", "builtin.color_spread"}:
+        if plugin not in {"builtin.zoom_blur", "builtin.color_spread", "builtin.chroma_key_remove"}:
             raise ValueError(f"Effect layer #{index + 1} has an unsupported plugin.")
         if not isinstance(source_visual_name, str):
             raise ValueError(f"Effect layer #{index + 1} has an invalid source visual name.")
@@ -259,13 +259,13 @@ def validate_project(data: Any) -> dict[str, Any]:
         trigger_mode = str(layer.get("trigger_mode", "interval"))
         if trigger_mode not in {"interval", "keyframes"}:
             raise ValueError(f"Effect layer #{index + 1} has an invalid trigger mode.")
-        if plugin == "builtin.color_spread":
+        if plugin in {"builtin.color_spread", "builtin.chroma_key_remove"}:
             trigger_mode = "interval"
         keyframe_layer_id = str(layer.get("keyframe_layer_id", ""))
         if trigger_mode == "keyframes" and not keyframe_layer_id:
             raise ValueError(f"Effect layer #{index + 1} must reference an audio keyframe layer.")
         mask_mode = str(layer.get("mask_mode", "none"))
-        if plugin == "builtin.color_spread":
+        if plugin in {"builtin.color_spread", "builtin.chroma_key_remove"}:
             mask_mode = "mask"
         if mask_mode not in {"none", "mask"}:
             raise ValueError(f"Effect layer #{index + 1} has an invalid mask mode.")
