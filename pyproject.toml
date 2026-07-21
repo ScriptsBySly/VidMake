@@ -1,0 +1,11 @@
+[project]
+name = "vidmake"
+version = "0.1.0"
+description = "Audio-reactive vertical video editor."
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6>=6.7",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
