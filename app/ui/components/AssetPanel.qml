@@ -97,6 +97,42 @@ Panel {
         }
     }
 
+    function iconForKind(kind) {
+        return kind === "Audio" ? "\uE8D6" : "\uEB9F"
+    }
+
+    function assets() {
+        var items = []
+        for (var i = 0; i < assetModel.count; i++) {
+            var asset = assetModel.get(i)
+            items.push({ "name": asset.name, "kind": asset.kind, "path": asset.path })
+        }
+        return items
+    }
+
+    function loadAssets(items) {
+        assetModel.clear()
+        for (var i = 0; i < items.length; i++) {
+            var asset = items[i]
+            assetModel.append({
+                "name": asset.name,
+                "kind": asset.kind,
+                "icon": iconForKind(asset.kind),
+                "path": asset.path
+            })
+        }
+    }
+
+    function latestAssetName(kind) {
+        for (var i = assetModel.count - 1; i >= 0; i--) {
+            var asset = assetModel.get(i)
+            if (asset.kind === kind) {
+                return asset.name
+            }
+        }
+        return ""
+    }
+
     FileDialog {
         id: audioDialog
         title: "Import audio"

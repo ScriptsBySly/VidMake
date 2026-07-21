@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "components"
 
@@ -7,14 +8,102 @@ ApplicationWindow {
     id: window
     property string audioAssetName: ""
     property string visualAssetName: ""
+    property string projectPath: ""
+    property string statusMessage: "Ready"
 
     width: 1440
     height: 900
     minimumWidth: 980
     minimumHeight: 640
     visible: true
-    title: "VidMake"
+    title: projectPath.length > 0 ? "VidMake - " + projectPath : "VidMake"
     color: Theme.window
+
+    function fileNameFromPath(path) {
+        var slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
+        return slash >= 0 ? path.slice(slash + 1) : path
+    }
+
+    function refreshLatestAssetNames() {
+        var audio = assetPanel.latestAssetName("Audio")
+        var visual = assetPanel.latestAssetName("Visual")
+        window.audioAssetName = audio
+        window.visualAssetName = visual
+    }
+
+    function projectData() {
+        return {
+            "format_version": 1,
+            "settings": {
+                "width": 1080,
+                "height": 1920,
+                "frame_rate": 30,
+                "duration": 15.0
+            },
+            "assets": assetPanel.assets()
+        }
+    }
+
+    function applyProject(data, path) {
+        assetPanel.loadAssets(data.assets || [])
+        refreshLatestAssetNames()
+        projectPath = path || ""
+    }
+
+    function newProject() {
+        var data = JSON.parse(projectController.newProjectJson())
+        applyProject(data, "")
+        statusMessage = "Created new project"
+    }
+
+    function saveProject(fileUrl) {
+        var savedPath = projectController.saveProject(fileUrl, JSON.stringify(projectData()))
+        if (savedPath.length > 0) {
+            projectPath = savedPath
+        }
+    }
+
+    function openProject(fileUrl) {
+        var loadedJson = projectController.loadProject(fileUrl)
+        if (loadedJson.length === 0) {
+            return
+        }
+        applyProject(JSON.parse(loadedJson), assetPanel.localPathFromUrl(fileUrl))
+    }
+
+    FileDialog {
+        id: openProjectDialog
+        title: "Open project"
+        fileMode: FileDialog.OpenFile
+        nameFilters: [
+            "VidMake projects (*.vidmake *.json)",
+            "All files (*)"
+        ]
+        onAccepted: window.openProject(selectedFile)
+    }
+
+    FileDialog {
+        id: saveProjectDialog
+        title: "Save project"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "vidmake"
+        nameFilters: [
+            "VidMake projects (*.vidmake)",
+            "JSON files (*.json)",
+            "All files (*)"
+        ]
+        onAccepted: window.saveProject(selectedFile)
+    }
+
+    Connections {
+        target: projectController
+        function onStatusChanged(message) {
+            window.statusMessage = message
+        }
+        function onErrorOccurred(message) {
+            window.statusMessage = message
+        }
+    }
 
     FontLoader {
         id: segoe
@@ -34,7 +123,7 @@ ApplicationWindow {
             spacing: 14
 
             Text {
-                text: "VidMake"
+                text: projectPath.length > 0 ? fileNameFromPath(projectPath) : "VidMake"
                 color: Theme.text
                 font.family: "Segoe UI Variable Display"
                 font.pixelSize: 18
@@ -54,21 +143,32 @@ ApplicationWindow {
                 font.family: "Segoe MDL2 Assets"
                 ToolTip.visible: hovered
                 ToolTip.text: "New project"
+                onClicked: window.newProject()
             }
 
             ToolButton {
-                text: "\uE74E"
+                text: "\uE8E5"
                 font.family: "Segoe MDL2 Assets"
                 ToolTip.visible: hovered
                 ToolTip.text: "Open project"
+                onClicked: openProjectDialog.open()
             }
 
             ToolButton {
                 text: "\uE74E"
                 font.family: "Segoe MDL2 Assets"
-                opacity: 0.55
                 ToolTip.visible: hovered
                 ToolTip.text: "Save project"
+                onClicked: saveProjectDialog.open()
+            }
+
+            Text {
+                text: statusMessage
+                color: Theme.subtleText
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                elide: Text.ElideRight
+                Layout.maximumWidth: 360
             }
 
             Item {
@@ -93,6 +193,7 @@ ApplicationWindow {
             spacing: 12
 
             AssetPanel {
+                id: assetPanel
                 Layout.preferredWidth: 322
                 Layout.minimumWidth: 280
                 Layout.maximumWidth: 390
@@ -105,12 +206,12 @@ ApplicationWindow {
                 }
                 onAudioDeleted: function(name, path) {
                     if (window.audioAssetName === name) {
-                        window.audioAssetName = ""
+                        window.audioAssetName = assetPanel.latestAssetName("Audio")
                     }
                 }
                 onVisualDeleted: function(name, path) {
                     if (window.visualAssetName === name) {
-                        window.visualAssetName = ""
+                        window.visualAssetName = assetPanel.latestAssetName("Visual")
                     }
                 }
             }

@@ -8,6 +8,11 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
+try:
+    from app.core.project_controller import ProjectController
+except ModuleNotFoundError:
+    from core.project_controller import ProjectController
+
 
 def main() -> int:
     logging.basicConfig(
@@ -20,6 +25,9 @@ def main() -> int:
     app.setOrganizationName("Scripts By Sly")
 
     engine = QQmlApplicationEngine()
+    project_controller = ProjectController()
+    engine.rootContext().setContextProperty("projectController", project_controller)
+
     qml_path = Path(__file__).resolve().parent / "ui" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
 
