@@ -17,6 +17,7 @@ Panel {
     property string compositionVisualName: ""
     property string compositionVisualPath: ""
     property var compositionEffectLayers: []
+    property var audioKeyframeLayers: []
     property bool compositionMode: false
     readonly property string mediaUrl: assetPath.length > 0 ? pathToUrl(assetPath) : ""
     readonly property string compositionAudioUrl: compositionAudioPath.length > 0 ? pathToUrl(compositionAudioPath) : ""
@@ -157,6 +158,22 @@ Panel {
         compositionEffectLayers = items
     }
 
+    function loadAudioKeyframeLayers(items) {
+        audioKeyframeLayers = items
+    }
+
+    function audioKeyframeLayerById(layerId) {
+        if (layerId.length === 0) {
+            return null
+        }
+        for (var i = 0; i < audioKeyframeLayers.length; i++) {
+            if (audioKeyframeLayers[i].id === layerId) {
+                return audioKeyframeLayers[i]
+            }
+        }
+        return null
+    }
+
     function zoomBlurEffectForCurrentVisual() {
         var targetPath = compositionMode ? compositionVisualPath : assetKind === "Visual" ? assetPath : ""
         if (targetPath.length === 0) {
@@ -175,6 +192,34 @@ Panel {
         var effect = activeZoomBlurEffect
         if (!effect) {
             return 0.0
+        }
+        if ((effect.trigger_mode || "interval") === "keyframes") {
+            var layer = audioKeyframeLayerById(effect.keyframe_layer_id || "")
+            if (!layer || !layer.keyframes || layer.keyframes.length === 0) {
+                return 0.0
+            }
+            var nowSeconds = currentPosition / 1000.0
+            var attackSeconds = 0.06
+            var releaseSeconds = 0.28
+            var bestPulse = 0.0
+            for (var i = 0; i < layer.keyframes.length; i++) {
+                var keyframe = layer.keyframes[i]
+                var timeSeconds = keyframe.time_seconds || 0.0
+                if (timeSeconds > nowSeconds + attackSeconds) {
+                    break
+                }
+                var delta = nowSeconds - timeSeconds
+                var pulse = 0.0
+                if (delta < 0 && -delta <= attackSeconds) {
+                    pulse = 1.0 + (delta / attackSeconds)
+                } else if (delta >= 0 && delta <= releaseSeconds) {
+                    pulse = 1.0 - (delta / releaseSeconds)
+                }
+                if (pulse > 0.0) {
+                    bestPulse = Math.max(bestPulse, pulse * Math.max(0.0, Math.min(1.0, keyframe.value || 1.0)))
+                }
+            }
+            return Math.max(0.0, Math.min(1.0, bestPulse))
         }
         var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
         var phase = currentPosition % intervalMs

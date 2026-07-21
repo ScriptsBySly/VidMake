@@ -89,8 +89,28 @@ ApplicationWindow {
             var assets = assetPanel.assets()
             timelinePanel.loadTimelineData(assets, audioKeyframeLayers, maskLayers, effectLayers)
             previewPanel.loadCompositionAssets(assets)
+            previewPanel.loadAudioKeyframeLayers(audioKeyframeLayers)
             previewPanel.loadCompositionEffects(effectLayers)
         }
+    }
+
+    function audioKeyframeLayerIndex(layerId) {
+        if (layerId.length === 0) {
+            return audioKeyframeLayers.length > 0 ? 0 : -1
+        }
+        for (var i = 0; i < audioKeyframeLayers.length; i++) {
+            if (audioKeyframeLayers[i].id === layerId) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    function audioKeyframeLayerIdAt(index) {
+        if (index < 0 || index >= audioKeyframeLayers.length) {
+            return ""
+        }
+        return audioKeyframeLayers[index].id || ""
     }
 
     function addAudioKeyframeLayer(layerJson) {
@@ -124,12 +144,20 @@ ApplicationWindow {
             statusMessage = "Select or import a visual asset before adding an effect"
             return
         }
+        var triggerMode = zoomTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
+        var keyframeLayerId = triggerMode === "keyframes" ? audioKeyframeLayerIdAt(zoomKeyframeLayer.currentIndex) : ""
+        if (triggerMode === "keyframes" && keyframeLayerId.length === 0) {
+            statusMessage = "Create an audio keyframe layer before using beat keyframes"
+            return
+        }
         addEffectLayer({
             "id": "effect-" + Date.now(),
             "name": zoomBlurName.text,
             "plugin": "builtin.zoom_blur",
             "source_visual_name": analysisVisualName,
             "source_visual_path": analysisVisualPath,
+            "trigger_mode": triggerMode,
+            "keyframe_layer_id": keyframeLayerId,
             "trigger_interval_seconds": triggerInterval.value,
             "blur_strength": blurStrength.value,
             "zoom_amount": zoomAmount.value
@@ -204,6 +232,8 @@ ApplicationWindow {
             editTolerance.value = layer.tolerance || 0.28
             editInverted.checked = !!layer.inverted
         } else {
+            editTriggerMode.currentIndex = (layer.trigger_mode || "interval") === "keyframes" ? 1 : 0
+            editKeyframeLayer.currentIndex = audioKeyframeLayerIndex(layer.keyframe_layer_id || "")
             editTriggerInterval.value = layer.trigger_interval_seconds || 1.0
             editBlurStrength.value = layer.blur_strength || 0.35
             editZoomAmount.value = layer.zoom_amount || 1.12
@@ -227,6 +257,14 @@ ApplicationWindow {
             layer.tolerance = editTolerance.value
             layer.inverted = editInverted.checked
         } else {
+            var editMode = editTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
+            var editKeyframeLayerId = editMode === "keyframes" ? audioKeyframeLayerIdAt(editKeyframeLayer.currentIndex) : ""
+            if (editMode === "keyframes" && editKeyframeLayerId.length === 0) {
+                statusMessage = "Create an audio keyframe layer before using beat keyframes"
+                return
+            }
+            layer.trigger_mode = editMode
+            layer.keyframe_layer_id = editKeyframeLayerId
             layer.trigger_interval_seconds = editTriggerInterval.value
             layer.blur_strength = editBlurStrength.value
             layer.zoom_amount = editZoomAmount.value
@@ -482,10 +520,41 @@ ApplicationWindow {
                 visible: editingLayerKind === "Effect"
 
                 Text {
+                    text: "Trigger source"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                ComboBox {
+                    id: editTriggerMode
+                    Layout.fillWidth: true
+                    model: ["Manual interval", "Beat keyframes"]
+                }
+
+                Text {
+                    text: "Beat keyframe layer"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    visible: editTriggerMode.currentIndex === 1
+                }
+
+                ComboBox {
+                    id: editKeyframeLayer
+                    Layout.fillWidth: true
+                    model: audioKeyframeLayers
+                    textRole: "name"
+                    enabled: audioKeyframeLayers.length > 0
+                    visible: editTriggerMode.currentIndex === 1
+                }
+
+                Text {
                     text: "Trigger every " + editTriggerInterval.value.toFixed(2) + " seconds"
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
+                    visible: editTriggerMode.currentIndex === 0
                 }
 
                 Slider {
@@ -495,6 +564,7 @@ ApplicationWindow {
                     to: 10
                     value: 1
                     stepSize: 0.1
+                    visible: editTriggerMode.currentIndex === 0
                 }
 
                 Text {
@@ -540,6 +610,8 @@ ApplicationWindow {
         y: Math.round((window.height - height) / 2)
         onOpened: {
             zoomBlurName.text = "Zoom blur"
+            zoomTriggerMode.currentIndex = 0
+            zoomKeyframeLayer.currentIndex = audioKeyframeLayers.length > 0 ? 0 : -1
             triggerInterval.value = 1.0
             blurStrength.value = 0.35
             zoomAmount.value = 1.12
@@ -568,10 +640,41 @@ ApplicationWindow {
             }
 
             Text {
+                text: "Trigger source"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            ComboBox {
+                id: zoomTriggerMode
+                Layout.fillWidth: true
+                model: ["Manual interval", "Beat keyframes"]
+            }
+
+            Text {
+                text: "Beat keyframe layer"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                visible: zoomTriggerMode.currentIndex === 1
+            }
+
+            ComboBox {
+                id: zoomKeyframeLayer
+                Layout.fillWidth: true
+                    model: audioKeyframeLayers
+                    textRole: "name"
+                    enabled: audioKeyframeLayers.length > 0
+                    visible: zoomTriggerMode.currentIndex === 1
+                }
+
+            Text {
                 text: "Trigger every " + triggerInterval.value.toFixed(2) + " seconds"
                 color: Theme.text
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
+                visible: zoomTriggerMode.currentIndex === 0
             }
 
             Slider {
@@ -581,6 +684,7 @@ ApplicationWindow {
                 to: 10
                 value: 1
                 stepSize: 0.1
+                visible: zoomTriggerMode.currentIndex === 0
             }
 
             Text {

@@ -102,6 +102,8 @@ def test_validate_project_preserves_zoom_blur_effect_layers() -> None:
             "plugin": "builtin.zoom_blur",
             "source_visual_name": "clip.mp4",
             "source_visual_path": "H:/media/clip.mp4",
+            "trigger_mode": "keyframes",
+            "keyframe_layer_id": "audio-keyframes-1",
             "trigger_interval_seconds": 0.5,
             "blur_strength": 0.4,
             "zoom_amount": 1.18,
@@ -111,4 +113,6 @@ def test_validate_project_preserves_zoom_blur_effect_layers() -> None:
     validated = validate_project(project)
 
     assert validated["effect_layers"][0]["plugin"] == "builtin.zoom_blur"
+    assert validated["effect_layers"][0]["trigger_mode"] == "keyframes"
+    assert validated["effect_layers"][0]["keyframe_layer_id"] == "audio-keyframes-1"
     assert validated["effect_layers"][0]["zoom_amount"] == 1.18

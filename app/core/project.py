@@ -57,6 +57,8 @@ class EffectLayer:
     plugin: str
     source_visual_name: str
     source_visual_path: str
+    trigger_mode: str
+    keyframe_layer_id: str
     trigger_interval_seconds: float
     blur_strength: float
     zoom_amount: float
@@ -225,6 +227,12 @@ def validate_project(data: Any) -> dict[str, Any]:
             raise ValueError(f"Effect layer #{index + 1} has an invalid source visual name.")
         if not isinstance(source_visual_path, str) or not source_visual_path:
             raise ValueError(f"Effect layer #{index + 1} is missing a source visual path.")
+        trigger_mode = str(layer.get("trigger_mode", "interval"))
+        if trigger_mode not in {"interval", "keyframes"}:
+            raise ValueError(f"Effect layer #{index + 1} has an invalid trigger mode.")
+        keyframe_layer_id = str(layer.get("keyframe_layer_id", ""))
+        if trigger_mode == "keyframes" and not keyframe_layer_id:
+            raise ValueError(f"Effect layer #{index + 1} must reference an audio keyframe layer.")
 
         validated_effect_layers.append(
             {
@@ -233,6 +241,8 @@ def validate_project(data: Any) -> dict[str, Any]:
                 "plugin": plugin,
                 "source_visual_name": source_visual_name,
                 "source_visual_path": source_visual_path,
+                "trigger_mode": trigger_mode,
+                "keyframe_layer_id": keyframe_layer_id,
                 "trigger_interval_seconds": max(0.05, float(layer.get("trigger_interval_seconds", 1.0))),
                 "blur_strength": max(0.0, float(layer.get("blur_strength", 0.35))),
                 "zoom_amount": max(1.0, float(layer.get("zoom_amount", 1.12))),
