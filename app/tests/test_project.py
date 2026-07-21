@@ -91,3 +91,24 @@ def test_validate_project_preserves_mask_layers() -> None:
     validated = validate_project(project)
 
     assert validated["mask_layers"][0]["key_color"] == "#00ff00"
+
+
+def test_validate_project_preserves_zoom_blur_effect_layers() -> None:
+    project = empty_project()
+    project["effect_layers"] = [
+        {
+            "id": "effect-1",
+            "name": "Zoom blur",
+            "plugin": "builtin.zoom_blur",
+            "source_visual_name": "clip.mp4",
+            "source_visual_path": "H:/media/clip.mp4",
+            "trigger_interval_seconds": 0.5,
+            "blur_strength": 0.4,
+            "zoom_amount": 1.18,
+        }
+    ]
+
+    validated = validate_project(project)
+
+    assert validated["effect_layers"][0]["plugin"] == "builtin.zoom_blur"
+    assert validated["effect_layers"][0]["zoom_amount"] == 1.18

@@ -51,12 +51,25 @@ class MaskLayer:
 
 
 @dataclass(frozen=True)
+class EffectLayer:
+    id: str
+    name: str
+    plugin: str
+    source_visual_name: str
+    source_visual_path: str
+    trigger_interval_seconds: float
+    blur_strength: float
+    zoom_amount: float
+
+
+@dataclass(frozen=True)
 class Project:
     format_version: int = FORMAT_VERSION
     settings: ProjectSettings = field(default_factory=ProjectSettings)
     assets: list[ProjectAsset] = field(default_factory=list)
     audio_keyframe_layers: list[AudioKeyframeLayer] = field(default_factory=list)
     mask_layers: list[MaskLayer] = field(default_factory=list)
+    effect_layers: list[EffectLayer] = field(default_factory=list)
 
 
 def empty_project() -> dict[str, Any]:
@@ -86,6 +99,10 @@ def validate_project(data: Any) -> dict[str, Any]:
     mask_layers = data.get("mask_layers", [])
     if not isinstance(mask_layers, list):
         raise ValueError("Project mask layers must be a list.")
+
+    effect_layers = data.get("effect_layers", [])
+    if not isinstance(effect_layers, list):
+        raise ValueError("Project effect layers must be a list.")
 
     validated_assets: list[dict[str, str]] = []
     for index, asset in enumerate(assets):
@@ -189,6 +206,39 @@ def validate_project(data: Any) -> dict[str, Any]:
             }
         )
 
+    validated_effect_layers: list[dict[str, Any]] = []
+    for index, layer in enumerate(effect_layers):
+        if not isinstance(layer, dict):
+            raise ValueError(f"Effect layer #{index + 1} must be an object.")
+        layer_id = layer.get("id")
+        name = layer.get("name")
+        plugin = layer.get("plugin")
+        source_visual_name = layer.get("source_visual_name")
+        source_visual_path = layer.get("source_visual_path")
+        if not isinstance(layer_id, str) or not layer_id:
+            raise ValueError(f"Effect layer #{index + 1} is missing an id.")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"Effect layer #{index + 1} is missing a name.")
+        if plugin != "builtin.zoom_blur":
+            raise ValueError(f"Effect layer #{index + 1} has an unsupported plugin.")
+        if not isinstance(source_visual_name, str):
+            raise ValueError(f"Effect layer #{index + 1} has an invalid source visual name.")
+        if not isinstance(source_visual_path, str) or not source_visual_path:
+            raise ValueError(f"Effect layer #{index + 1} is missing a source visual path.")
+
+        validated_effect_layers.append(
+            {
+                "id": layer_id,
+                "name": name,
+                "plugin": plugin,
+                "source_visual_name": source_visual_name,
+                "source_visual_path": source_visual_path,
+                "trigger_interval_seconds": max(0.05, float(layer.get("trigger_interval_seconds", 1.0))),
+                "blur_strength": max(0.0, float(layer.get("blur_strength", 0.35))),
+                "zoom_amount": max(1.0, float(layer.get("zoom_amount", 1.12))),
+            }
+        )
+
     width = int(settings.get("width", 1080))
     height = int(settings.get("height", 1920))
     if (width, height) not in SUPPORTED_RESOLUTIONS:
@@ -205,6 +255,7 @@ def validate_project(data: Any) -> dict[str, Any]:
         "assets": validated_assets,
         "audio_keyframe_layers": validated_keyframe_layers,
         "mask_layers": validated_mask_layers,
+        "effect_layers": validated_effect_layers,
     }
 
 

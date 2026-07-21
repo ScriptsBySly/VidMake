@@ -16,9 +16,11 @@ Panel {
     signal playbackToggled()
     signal generatedLayerEditRequested(string kind, string id)
     signal generatedLayerDeleteRequested(string kind, string id)
+    signal effectAddRequested()
     property var cachedAssets: []
     property var cachedKeyframeLayers: []
     property var cachedMaskLayers: []
+    property var cachedEffectLayers: []
 
     function formatTime(milliseconds) {
         var total = Math.max(0, Math.floor(milliseconds / 1000))
@@ -35,12 +37,24 @@ Panel {
         if (kind === "Mask") {
             return "#5b4b8a"
         }
+        if (kind === "Effect") {
+            return "#0f766e"
+        }
         return kind === "Audio" ? "#b45309" : "#2b5361"
     }
 
     function rowLabel(kind, depth) {
         if (depth > 0) {
             return kind
+        }
+        if (kind === "Effect") {
+            return "Effect"
+        }
+        if (kind === "Mask") {
+            return "Mask"
+        }
+        if (kind === "Keyframes") {
+            return "Keyframes"
         }
         return kind === "Audio" ? "Audio Source" : "Visual Source"
     }
@@ -55,6 +69,9 @@ Panel {
         if (kind === "Mask") {
             return "#a99be0"
         }
+        if (kind === "Effect") {
+            return "#5eead4"
+        }
         return kind === "Audio" ? Theme.audioStroke : "#6dbad0"
     }
 
@@ -62,8 +79,10 @@ Panel {
         timelineModel.clear()
         var groupedKeyframes = {}
         var groupedMasks = {}
+        var groupedEffects = {}
         var usedKeyframes = {}
         var usedMasks = {}
+        var usedEffects = {}
 
         for (var keyframeIndex = 0; keyframeIndex < cachedKeyframeLayers.length; keyframeIndex++) {
             var keyframeLayer = cachedKeyframeLayers[keyframeIndex]
@@ -81,6 +100,15 @@ Panel {
                 groupedMasks[visualPath] = []
             }
             groupedMasks[visualPath].push(maskLayer)
+        }
+
+        for (var effectIndex = 0; effectIndex < cachedEffectLayers.length; effectIndex++) {
+            var effectLayer = cachedEffectLayers[effectIndex]
+            var effectVisualPath = effectLayer.source_visual_path || ""
+            if (!groupedEffects[effectVisualPath]) {
+                groupedEffects[effectVisualPath] = []
+            }
+            groupedEffects[effectVisualPath].push(effectLayer)
         }
 
         for (var i = 0; i < cachedAssets.length; i++) {
@@ -121,6 +149,20 @@ Panel {
                     "selectable": false
                 })
             }
+
+            var effectChildren = groupedEffects[asset.path] || []
+            for (var effectChildIndex = 0; effectChildIndex < effectChildren.length; effectChildIndex++) {
+                var childEffect = effectChildren[effectChildIndex]
+                usedEffects[childEffect.id] = true
+                timelineModel.append({
+                    "name": childEffect.name,
+                    "kind": "Effect",
+                    "path": childEffect.id,
+                    "start": 0,
+                    "depth": 1,
+                    "selectable": false
+                })
+            }
         }
 
         for (var orphanKeyframeIndex = 0; orphanKeyframeIndex < cachedKeyframeLayers.length; orphanKeyframeIndex++) {
@@ -151,6 +193,20 @@ Panel {
                 "selectable": false
             })
         }
+        for (var orphanEffectIndex = 0; orphanEffectIndex < cachedEffectLayers.length; orphanEffectIndex++) {
+            var effect = cachedEffectLayers[orphanEffectIndex]
+            if (usedEffects[effect.id]) {
+                continue
+            }
+            timelineModel.append({
+                "name": effect.name,
+                "kind": "Effect",
+                "path": effect.id,
+                "start": 0,
+                "depth": 0,
+                "selectable": false
+            })
+        }
     }
 
     function loadAssets(items) {
@@ -168,10 +224,11 @@ Panel {
         rebuildTimeline()
     }
 
-    function loadTimelineData(assets, keyframeLayers, maskLayerItems) {
+    function loadTimelineData(assets, keyframeLayers, maskLayerItems, effectLayerItems) {
         cachedAssets = assets
         cachedKeyframeLayers = keyframeLayers
         cachedMaskLayers = maskLayerItems
+        cachedEffectLayers = effectLayerItems
         rebuildTimeline()
     }
 
@@ -201,6 +258,7 @@ Panel {
             PillButton {
                 text: "Add effect"
                 iconText: "\uE710"
+                onClicked: root.effectAddRequested()
             }
 
             ComboBox {

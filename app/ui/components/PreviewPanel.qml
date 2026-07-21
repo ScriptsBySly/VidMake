@@ -16,6 +16,7 @@ Panel {
     property string compositionAudioPath: ""
     property string compositionVisualName: ""
     property string compositionVisualPath: ""
+    property var compositionEffectLayers: []
     property bool compositionMode: false
     readonly property string mediaUrl: assetPath.length > 0 ? pathToUrl(assetPath) : ""
     readonly property string compositionAudioUrl: compositionAudioPath.length > 0 ? pathToUrl(compositionAudioPath) : ""
@@ -37,6 +38,10 @@ Panel {
     readonly property bool isPlaying: compositionMode
         ? (compositionAudioPlayer.playbackState === MediaPlayer.PlayingState || compositionVideoPlayer.playbackState === MediaPlayer.PlayingState)
         : player.playbackState === MediaPlayer.PlayingState
+    readonly property var activeZoomBlurEffect: zoomBlurEffectForCurrentVisual()
+    readonly property real zoomBlurPulse: zoomBlurPulseValue()
+    readonly property real zoomBlurScale: activeZoomBlurEffect ? 1.0 + (activeZoomBlurEffect.zoom_amount - 1.0) * zoomBlurPulse : 1.0
+    readonly property real zoomBlurOpacity: activeZoomBlurEffect ? activeZoomBlurEffect.blur_strength * zoomBlurPulse : 0.0
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -146,6 +151,42 @@ Panel {
                 compositionVisualPath = asset.path
             }
         }
+    }
+
+    function loadCompositionEffects(items) {
+        compositionEffectLayers = items
+    }
+
+    function zoomBlurEffectForCurrentVisual() {
+        var targetPath = compositionMode ? compositionVisualPath : assetKind === "Visual" ? assetPath : ""
+        if (targetPath.length === 0) {
+            return null
+        }
+        for (var i = compositionEffectLayers.length - 1; i >= 0; i--) {
+            var effect = compositionEffectLayers[i]
+            if (effect.plugin === "builtin.zoom_blur" && effect.source_visual_path === targetPath) {
+                return effect
+            }
+        }
+        return null
+    }
+
+    function zoomBlurPulseValue() {
+        var effect = activeZoomBlurEffect
+        if (!effect) {
+            return 0.0
+        }
+        var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
+        var phase = currentPosition % intervalMs
+        var attackMs = Math.min(120, intervalMs * 0.25)
+        var releaseMs = Math.min(420, intervalMs * 0.75)
+        if (phase <= attackMs) {
+            return phase / Math.max(1, attackMs)
+        }
+        if (phase <= attackMs + releaseMs) {
+            return 1.0 - ((phase - attackMs) / Math.max(1, releaseMs))
+        }
+        return 0.0
     }
 
     function stopComposition() {
@@ -268,63 +309,100 @@ Panel {
                 border.color: "#303238"
                 clip: true
 
-                VideoOutput {
-                    id: assetVideoOutput
+                Item {
+                    id: visualContent
                     anchors.fill: parent
-                    fillMode: VideoOutput.PreserveAspectFit
-                    visible: !root.compositionMode && root.isVideo
-                }
+                    scale: root.zoomBlurScale
+                    transformOrigin: Item.Center
 
-                VideoOutput {
-                    id: compositionVideoOutput
-                    anchors.fill: parent
-                    fillMode: VideoOutput.PreserveAspectFit
-                    visible: root.compositionMode && root.compositionVisualIsVideo
-                }
-
-                Image {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    source: root.compositionMode && root.compositionVisualIsImage
-                        ? root.compositionVisualUrl
-                        : !root.compositionMode && root.isImage ? root.mediaUrl : ""
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
-                    visible: source.toString().length > 0
-                }
-
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 14
-                    visible: root.compositionMode
-                        ? !root.compositionVisualIsImage && !root.compositionVisualIsVideo
-                        : !root.isImage && !root.isVideo
-
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: 96
-                        height: 96
-                        radius: 8
-                        color: root.isAudio ? Theme.audioTile : "#2b5361"
-                        border.color: root.isAudio ? Theme.audioAccent : "#6dbad0"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.compositionMode || root.isAudio ? "\uE8D6" : "\uEB9F"
-                            color: root.compositionMode || root.isAudio ? Theme.audioAccent : "#d7f4ff"
-                            font.family: "Segoe MDL2 Assets"
-                            font.pixelSize: 42
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: 55
+                            easing.type: Easing.OutCubic
                         }
                     }
 
-                    Text {
-                        width: Math.min(frame.width - 32, 360)
-                        horizontalAlignment: Text.AlignHCenter
-                        text: root.placeholderLabel()
-                        color: "#d9dbe1"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 14
-                        elide: Text.ElideMiddle
+                    VideoOutput {
+                        id: assetVideoOutput
+                        anchors.fill: parent
+                        fillMode: VideoOutput.PreserveAspectFit
+                        visible: !root.compositionMode && root.isVideo
+                    }
+
+                    VideoOutput {
+                        id: compositionVideoOutput
+                        anchors.fill: parent
+                        fillMode: VideoOutput.PreserveAspectFit
+                        visible: root.compositionMode && root.compositionVisualIsVideo
+                    }
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        source: root.compositionMode && root.compositionVisualIsImage
+                            ? root.compositionVisualUrl
+                            : !root.compositionMode && root.isImage ? root.mediaUrl : ""
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        visible: source.toString().length > 0
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 14
+                        visible: root.compositionMode
+                            ? !root.compositionVisualIsImage && !root.compositionVisualIsVideo
+                            : !root.isImage && !root.isVideo
+
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 96
+                            height: 96
+                            radius: 8
+                            color: root.isAudio ? Theme.audioTile : "#2b5361"
+                            border.color: root.isAudio ? Theme.audioAccent : "#6dbad0"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.compositionMode || root.isAudio ? "\uE8D6" : "\uEB9F"
+                                color: root.compositionMode || root.isAudio ? Theme.audioAccent : "#d7f4ff"
+                                font.family: "Segoe MDL2 Assets"
+                                font.pixelSize: 42
+                            }
+                        }
+
+                        Text {
+                            width: Math.min(frame.width - 32, 360)
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.placeholderLabel()
+                            color: "#d9dbe1"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 14
+                            elide: Text.ElideMiddle
+                        }
+                    }
+                }
+
+                Item {
+                    anchors.fill: parent
+                    visible: root.zoomBlurOpacity > 0.01
+                    opacity: root.zoomBlurOpacity
+
+                    Repeater {
+                        model: 12
+
+                        Rectangle {
+                            required property int index
+                            width: frame.width * 0.42
+                            height: 2
+                            radius: 1
+                            color: "white"
+                            opacity: 0.42
+                            x: frame.width / 2
+                            y: frame.height / 2
+                            transformOrigin: Item.Left
+                            rotation: index * 30
+                        }
                     }
                 }
 

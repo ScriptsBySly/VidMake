@@ -22,6 +22,7 @@ ApplicationWindow {
     property string analysisVisualName: ""
     property string analysisVisualPath: ""
     property var maskLayers: []
+    property var effectLayers: []
     property string editingLayerKind: ""
     property string editingLayerId: ""
     property var editingLayer: ({})
@@ -61,7 +62,8 @@ ApplicationWindow {
             },
             "assets": assetPanel.assets(),
             "audio_keyframe_layers": audioKeyframeLayers,
-            "mask_layers": maskLayers
+            "mask_layers": maskLayers,
+            "effect_layers": effectLayers
         }
     }
 
@@ -69,6 +71,7 @@ ApplicationWindow {
         assetPanel.loadAssets(data.assets || [])
         audioKeyframeLayers = data.audio_keyframe_layers || []
         maskLayers = data.mask_layers || []
+        effectLayers = data.effect_layers || []
         syncTimelineAssets()
         refreshLatestAssetNames()
         selectedAssetName = ""
@@ -84,8 +87,9 @@ ApplicationWindow {
     function syncTimelineAssets() {
         if (timelinePanel) {
             var assets = assetPanel.assets()
-            timelinePanel.loadTimelineData(assets, audioKeyframeLayers, maskLayers)
+            timelinePanel.loadTimelineData(assets, audioKeyframeLayers, maskLayers, effectLayers)
             previewPanel.loadCompositionAssets(assets)
+            previewPanel.loadCompositionEffects(effectLayers)
         }
     }
 
@@ -107,8 +111,33 @@ ApplicationWindow {
         statusMessage = "Created " + layer.name
     }
 
+    function addEffectLayer(layer) {
+        var layers = effectLayers.slice(0)
+        layers.push(layer)
+        effectLayers = layers
+        syncTimelineAssets()
+        statusMessage = "Created " + layer.name
+    }
+
+    function createZoomBlurEffect() {
+        if (analysisVisualPath.length === 0) {
+            statusMessage = "Select or import a visual asset before adding an effect"
+            return
+        }
+        addEffectLayer({
+            "id": "effect-" + Date.now(),
+            "name": zoomBlurName.text,
+            "plugin": "builtin.zoom_blur",
+            "source_visual_name": analysisVisualName,
+            "source_visual_path": analysisVisualPath,
+            "trigger_interval_seconds": triggerInterval.value,
+            "blur_strength": blurStrength.value,
+            "zoom_amount": zoomAmount.value
+        })
+    }
+
     function findGeneratedLayer(kind, id) {
-        var source = kind === "Keyframes" ? audioKeyframeLayers : maskLayers
+        var source = kind === "Keyframes" ? audioKeyframeLayers : kind === "Mask" ? maskLayers : effectLayers
         for (var i = 0; i < source.length; i++) {
             if (source[i].id === id) {
                 return source[i]
@@ -118,22 +147,24 @@ ApplicationWindow {
     }
 
     function updateGeneratedLayer(kind, updatedLayer) {
-        var source = kind === "Keyframes" ? audioKeyframeLayers : maskLayers
+        var source = kind === "Keyframes" ? audioKeyframeLayers : kind === "Mask" ? maskLayers : effectLayers
         var updated = []
         for (var i = 0; i < source.length; i++) {
             updated.push(source[i].id === updatedLayer.id ? updatedLayer : source[i])
         }
         if (kind === "Keyframes") {
             audioKeyframeLayers = updated
-        } else {
+        } else if (kind === "Mask") {
             maskLayers = updated
+        } else {
+            effectLayers = updated
         }
         syncTimelineAssets()
         statusMessage = "Updated " + updatedLayer.name
     }
 
     function deleteGeneratedLayer(kind, id) {
-        var source = kind === "Keyframes" ? audioKeyframeLayers : maskLayers
+        var source = kind === "Keyframes" ? audioKeyframeLayers : kind === "Mask" ? maskLayers : effectLayers
         var updated = []
         var deletedName = ""
         for (var i = 0; i < source.length; i++) {
@@ -145,8 +176,10 @@ ApplicationWindow {
         }
         if (kind === "Keyframes") {
             audioKeyframeLayers = updated
-        } else {
+        } else if (kind === "Mask") {
             maskLayers = updated
+        } else {
+            effectLayers = updated
         }
         syncTimelineAssets()
         statusMessage = deletedName.length > 0 ? "Deleted " + deletedName : "Layer deleted"
@@ -166,10 +199,14 @@ ApplicationWindow {
             editBandName.text = layer.band_name || ""
             editLowHz.value = Math.round(layer.low_hz || 0)
             editHighHz.value = Math.round(layer.high_hz || 0)
-        } else {
+        } else if (kind === "Mask") {
             editKeyColor.text = layer.key_color || "#00ff00"
             editTolerance.value = layer.tolerance || 0.28
             editInverted.checked = !!layer.inverted
+        } else {
+            editTriggerInterval.value = layer.trigger_interval_seconds || 1.0
+            editBlurStrength.value = layer.blur_strength || 0.35
+            editZoomAmount.value = layer.zoom_amount || 1.12
         }
         generatedLayerDialog.open()
     }
@@ -181,7 +218,7 @@ ApplicationWindow {
             layer.band_name = editBandName.text
             layer.low_hz = editLowHz.value
             layer.high_hz = editHighHz.value
-        } else {
+        } else if (editingLayerKind === "Mask") {
             if (!/^#[0-9a-fA-F]{6}$/.test(editKeyColor.text)) {
                 statusMessage = "Mask key color must use #rrggbb"
                 return
@@ -189,6 +226,10 @@ ApplicationWindow {
             layer.key_color = editKeyColor.text
             layer.tolerance = editTolerance.value
             layer.inverted = editInverted.checked
+        } else {
+            layer.trigger_interval_seconds = editTriggerInterval.value
+            layer.blur_strength = editBlurStrength.value
+            layer.zoom_amount = editZoomAmount.value
         }
         updateGeneratedLayer(editingLayerKind, layer)
     }
@@ -315,7 +356,7 @@ ApplicationWindow {
 
     Dialog {
         id: generatedLayerDialog
-        title: editingLayerKind === "Keyframes" ? "Edit Keyframe Layer" : "Edit Mask Layer"
+        title: editingLayerKind === "Keyframes" ? "Edit Keyframe Layer" : editingLayerKind === "Mask" ? "Edit Mask Layer" : "Edit Effect Layer"
         modal: true
         standardButtons: Dialog.Save | Dialog.Cancel
         width: 430
@@ -433,6 +474,143 @@ ApplicationWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                 }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                visible: editingLayerKind === "Effect"
+
+                Text {
+                    text: "Trigger every " + editTriggerInterval.value.toFixed(2) + " seconds"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                Slider {
+                    id: editTriggerInterval
+                    Layout.fillWidth: true
+                    from: 0.1
+                    to: 10
+                    value: 1
+                    stepSize: 0.1
+                }
+
+                Text {
+                    text: "Blur strength " + editBlurStrength.value.toFixed(2)
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                Slider {
+                    id: editBlurStrength
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 1
+                    value: 0.35
+                }
+
+                Text {
+                    text: "Zoom amount " + editZoomAmount.value.toFixed(2) + "x"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                Slider {
+                    id: editZoomAmount
+                    Layout.fillWidth: true
+                    from: 1
+                    to: 2
+                    value: 1.12
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: zoomBlurDialog
+        title: "Add Zoom Blur"
+        modal: true
+        standardButtons: Dialog.Save | Dialog.Cancel
+        width: 430
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        onOpened: {
+            zoomBlurName.text = "Zoom blur"
+            triggerInterval.value = 1.0
+            blurStrength.value = 0.35
+            zoomAmount.value = 1.12
+        }
+        onAccepted: window.createZoomBlurEffect()
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Text {
+                text: analysisVisualName.length > 0 ? "Source: " + analysisVisualName : "Select a visual source first"
+                color: analysisVisualName.length > 0 ? Theme.subtleText : "#b91c1c"
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+                Layout.fillWidth: true
+            }
+
+            TextField {
+                id: zoomBlurName
+                Layout.fillWidth: true
+                color: Theme.text
+                font.family: Theme.fontFamily
+                placeholderText: "Effect name"
+            }
+
+            Text {
+                text: "Trigger every " + triggerInterval.value.toFixed(2) + " seconds"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            Slider {
+                id: triggerInterval
+                Layout.fillWidth: true
+                from: 0.1
+                to: 10
+                value: 1
+                stepSize: 0.1
+            }
+
+            Text {
+                text: "Blur strength " + blurStrength.value.toFixed(2)
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            Slider {
+                id: blurStrength
+                Layout.fillWidth: true
+                from: 0
+                to: 1
+                value: 0.35
+            }
+
+            Text {
+                text: "Zoom amount " + zoomAmount.value.toFixed(2) + "x"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            Slider {
+                id: zoomAmount
+                Layout.fillWidth: true
+                from: 1
+                to: 2
+                value: 1.12
             }
         }
     }
@@ -703,6 +881,7 @@ ApplicationWindow {
                     onGeneratedLayerDeleteRequested: function(kind, id) {
                         window.deleteGeneratedLayer(kind, id)
                     }
+                    onEffectAddRequested: zoomBlurDialog.open()
                     SplitView.fillWidth: true
                     SplitView.minimumHeight: 210
                     SplitView.preferredHeight: 290
