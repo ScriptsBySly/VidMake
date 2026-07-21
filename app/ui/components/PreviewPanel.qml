@@ -56,6 +56,15 @@ Panel {
     readonly property real zoomBlurMaskHeight: zoomBlurUsesMask ? Math.max(12, (maskBound("max_y", 1.0) - maskBound("min_y", 0.0)) * frame.height) : frame.height
     readonly property real zoomBlurScale: activeZoomBlurEffect && !zoomBlurMaskMode ? 1.0 + (activeZoomBlurEffect.zoom_amount - 1.0) * zoomBlurPulse : 1.0
     readonly property real zoomBlurOpacity: activeZoomBlurEffect && (!zoomBlurMaskMode || zoomBlurHasCutout) ? activeZoomBlurEffect.blur_strength * zoomBlurPulse : 0.0
+    readonly property var activeColorSpreadEffect: colorSpreadEffectForCurrentVisual()
+    readonly property var activeColorSpreadMaskLayer: maskLayerById(activeColorSpreadEffect ? activeColorSpreadEffect.mask_layer_id || "" : "")
+    readonly property bool colorSpreadReady: activeColorSpreadEffect !== null && activeColorSpreadMaskLayer !== null
+    readonly property real colorSpreadProgress: colorSpreadProgressValue()
+    readonly property string colorSpreadColor: colorSpreadCurrentColor()
+    readonly property real colorSpreadOriginX: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_x || 0.5 : 0.5
+    readonly property real colorSpreadOriginY: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_y || 0.5 : 0.5
+    readonly property real colorSpreadRadius: colorSpreadMaxRadius() * colorSpreadProgress
+    readonly property real colorSpreadOpacity: colorSpreadReady ? Math.max(0.0, 0.42 * (1.0 - colorSpreadProgress * 0.25)) : 0.0
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -211,6 +220,14 @@ Panel {
         return value === undefined ? fallback : value
     }
 
+    function maskLayerBound(layer, name, fallback) {
+        if (!layer || !layer.mask_bounds) {
+            return fallback
+        }
+        var value = layer.mask_bounds[name]
+        return value === undefined ? fallback : value
+    }
+
     function zoomBlurBurstScale(index) {
         var zoomAmount = activeZoomBlurEffect ? activeZoomBlurEffect.zoom_amount : 1.12
         return 1.0 + (zoomAmount - 1.0) * zoomBlurPulse * (1.0 + index * 0.55)
@@ -228,6 +245,54 @@ Panel {
             }
         }
         return null
+    }
+
+    function colorSpreadEffectForCurrentVisual() {
+        var targetPath = compositionMode ? compositionVisualPath : assetKind === "Visual" ? assetPath : ""
+        if (targetPath.length === 0) {
+            return null
+        }
+        for (var i = compositionEffectLayers.length - 1; i >= 0; i--) {
+            var effect = compositionEffectLayers[i]
+            if (effect.plugin === "builtin.color_spread" && effect.source_visual_path === targetPath) {
+                return effect
+            }
+        }
+        return null
+    }
+
+    function colorSpreadProgressValue() {
+        var effect = activeColorSpreadEffect
+        if (!effect || !activeColorSpreadMaskLayer) {
+            return 0.0
+        }
+        var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
+        var durationMs = Math.max(50, effect.spread_duration_seconds * 1000.0)
+        var phase = currentPosition % intervalMs
+        if (phase > durationMs) {
+            return 0.0
+        }
+        return Math.max(0.0, Math.min(1.0, phase / durationMs))
+    }
+
+    function colorSpreadCurrentColor() {
+        var effect = activeColorSpreadEffect
+        if (!effect) {
+            return "#00c8ff"
+        }
+        var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
+        var cycle = Math.floor(currentPosition / intervalMs)
+        return cycle % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
+    }
+
+    function colorSpreadMaxRadius() {
+        var originX = frame.width * colorSpreadOriginX
+        var originY = frame.height * colorSpreadOriginY
+        var topLeft = Math.sqrt(originX * originX + originY * originY)
+        var topRight = Math.sqrt((frame.width - originX) * (frame.width - originX) + originY * originY)
+        var bottomLeft = Math.sqrt(originX * originX + (frame.height - originY) * (frame.height - originY))
+        var bottomRight = Math.sqrt((frame.width - originX) * (frame.width - originX) + (frame.height - originY) * (frame.height - originY))
+        return Math.max(topLeft, topRight, bottomLeft, bottomRight) + 32
     }
 
     function zoomBlurPulseValue() {
@@ -468,6 +533,17 @@ Panel {
                             elide: Text.ElideMiddle
                         }
                     }
+                }
+
+                Rectangle {
+                    width: Math.max(10, root.colorSpreadRadius * 2)
+                    height: width
+                    radius: width / 2
+                    x: frame.width * root.colorSpreadOriginX - width / 2
+                    y: frame.height * root.colorSpreadOriginY - height / 2
+                    color: root.colorSpreadColor
+                    opacity: root.colorSpreadProgress > 0.0 ? root.colorSpreadOpacity : 0.0
+                    visible: root.colorSpreadReady && root.colorSpreadProgress > 0.0
                 }
 
                 Item {

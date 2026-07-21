@@ -217,6 +217,37 @@ ApplicationWindow {
         })
     }
 
+    function createColorSpreadEffect() {
+        if (analysisVisualPath.length === 0) {
+            statusMessage = "Select or import a visual asset before adding an effect"
+            return
+        }
+        var maskLayerId = maskLayerIdAtForVisual(analysisVisualPath, colorSpreadMaskLayer.currentIndex)
+        if (maskLayerId.length === 0) {
+            statusMessage = "Create a mask layer for this visual before adding color spread"
+            return
+        }
+        if (!/^#[0-9a-fA-F]{6}$/.test(colorSpreadColor1.text) || !/^#[0-9a-fA-F]{6}$/.test(colorSpreadColor2.text)) {
+            statusMessage = "Color spread colors must use #rrggbb"
+            return
+        }
+        addEffectLayer({
+            "id": "effect-" + Date.now(),
+            "name": colorSpreadName.text,
+            "plugin": "builtin.color_spread",
+            "source_visual_name": analysisVisualName,
+            "source_visual_path": analysisVisualPath,
+            "trigger_mode": "interval",
+            "keyframe_layer_id": "",
+            "mask_mode": "mask",
+            "mask_layer_id": maskLayerId,
+            "trigger_interval_seconds": colorSpreadInterval.value,
+            "spread_duration_seconds": colorSpreadDuration.value,
+            "color_1": colorSpreadColor1.text,
+            "color_2": colorSpreadColor2.text
+        })
+    }
+
     function findGeneratedLayer(kind, id) {
         var source = kind === "Keyframes" ? audioKeyframeLayers : kind === "Mask" ? maskLayers : effectLayers
         for (var i = 0; i < source.length; i++) {
@@ -292,6 +323,9 @@ ApplicationWindow {
             editTriggerInterval.value = layer.trigger_interval_seconds || 1.0
             editBlurStrength.value = layer.blur_strength || 0.35
             editZoomAmount.value = layer.zoom_amount || 1.12
+            editSpreadDuration.value = layer.spread_duration_seconds || 0.8
+            editColor1.text = layer.color_1 || "#00c8ff"
+            editColor2.text = layer.color_2 || "#ff4fd8"
         }
         generatedLayerDialog.open()
     }
@@ -312,16 +346,21 @@ ApplicationWindow {
             layer.tolerance = editTolerance.value
             layer.inverted = editInverted.checked
         } else {
-            var editMode = editTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
+            var isColorSpread = layer.plugin === "builtin.color_spread"
+            var editMode = !isColorSpread && editTriggerMode.currentIndex === 1 ? "keyframes" : "interval"
             var editKeyframeLayerId = editMode === "keyframes" ? audioKeyframeLayerIdAt(editKeyframeLayer.currentIndex) : ""
             if (editMode === "keyframes" && editKeyframeLayerId.length === 0) {
                 statusMessage = "Create an audio keyframe layer before using beat keyframes"
                 return
             }
-            var editMaskModeValue = editMaskMode.currentIndex === 1 ? "mask" : "none"
+            var editMaskModeValue = isColorSpread ? "mask" : editMaskMode.currentIndex === 1 ? "mask" : "none"
             var editMaskLayerId = editMaskModeValue === "mask" ? maskLayerIdAtForVisual(layer.source_visual_path || "", editMaskLayer.currentIndex) : ""
             if (editMaskModeValue === "mask" && editMaskLayerId.length === 0) {
                 statusMessage = "Create a mask layer for this visual before using mask mode"
+                return
+            }
+            if (isColorSpread && (!/^#[0-9a-fA-F]{6}$/.test(editColor1.text) || !/^#[0-9a-fA-F]{6}$/.test(editColor2.text))) {
+                statusMessage = "Color spread colors must use #rrggbb"
                 return
             }
             layer.trigger_mode = editMode
@@ -331,6 +370,9 @@ ApplicationWindow {
             layer.trigger_interval_seconds = editTriggerInterval.value
             layer.blur_strength = editBlurStrength.value
             layer.zoom_amount = editZoomAmount.value
+            layer.spread_duration_seconds = editSpreadDuration.value
+            layer.color_1 = editColor1.text
+            layer.color_2 = editColor2.text
         }
         updateGeneratedLayer(editingLayerKind, layer)
     }
@@ -587,12 +629,14 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
+                    visible: editingLayer.plugin !== "builtin.color_spread"
                 }
 
                 ComboBox {
                     id: editTriggerMode
                     Layout.fillWidth: true
                     model: ["Manual interval", "Beat keyframes"]
+                    visible: editingLayer.plugin !== "builtin.color_spread"
                 }
 
                 Text {
@@ -600,7 +644,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editTriggerMode.currentIndex === 1
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editTriggerMode.currentIndex === 1
                 }
 
                 ComboBox {
@@ -609,11 +653,11 @@ ApplicationWindow {
                     model: audioKeyframeLayers
                     textRole: "name"
                     enabled: audioKeyframeLayers.length > 0
-                    visible: editTriggerMode.currentIndex === 1
+                    visible: editingLayer.plugin !== "builtin.color_spread" && editTriggerMode.currentIndex === 1
                 }
 
                 Text {
-                    text: "Effect area"
+                    text: editingLayer.plugin === "builtin.color_spread" ? "Start mask" : "Effect area"
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
@@ -623,6 +667,7 @@ ApplicationWindow {
                     id: editMaskMode
                     Layout.fillWidth: true
                     model: ["Entire visual", "Mask layer"]
+                    visible: editingLayer.plugin !== "builtin.color_spread"
                 }
 
                 Text {
@@ -630,7 +675,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editMaskMode.currentIndex === 1
+                    visible: editingLayer.plugin === "builtin.color_spread" || editMaskMode.currentIndex === 1
                 }
 
                 ComboBox {
@@ -639,12 +684,12 @@ ApplicationWindow {
                     model: maskLayersForVisual(editingLayer.source_visual_path || "")
                     textRole: "name"
                     enabled: count > 0
-                    visible: editMaskMode.currentIndex === 1
+                    visible: editingLayer.plugin === "builtin.color_spread" || editMaskMode.currentIndex === 1
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Re-analyze this mask to make only the keyed pixels participate in the effect."
+                    text: "Re-analyze this mask so effects can use its keyed area."
                     color: "#b45309"
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
@@ -659,7 +704,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
-                    visible: editTriggerMode.currentIndex === 0
+                    visible: editingLayer.plugin === "builtin.color_spread" || editTriggerMode.currentIndex === 0
                 }
 
                 Slider {
@@ -669,7 +714,61 @@ ApplicationWindow {
                     to: 10
                     value: 1
                     stepSize: 0.1
-                    visible: editTriggerMode.currentIndex === 0
+                    visible: editingLayer.plugin === "builtin.color_spread" || editTriggerMode.currentIndex === 0
+                }
+
+                Text {
+                    text: "Spread duration " + editSpreadDuration.value.toFixed(2) + " seconds"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    visible: editingLayer.plugin === "builtin.color_spread"
+                }
+
+                Slider {
+                    id: editSpreadDuration
+                    Layout.fillWidth: true
+                    from: 0.1
+                    to: 3
+                    value: 0.8
+                    stepSize: 0.1
+                    visible: editingLayer.plugin === "builtin.color_spread"
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    visible: editingLayer.plugin === "builtin.color_spread"
+
+                    Rectangle {
+                        Layout.preferredWidth: 34
+                        Layout.preferredHeight: 34
+                        radius: 6
+                        color: /^#[0-9a-fA-F]{6}$/.test(editColor1.text) ? editColor1.text : "transparent"
+                        border.color: Theme.strokeStrong
+                    }
+
+                    TextField {
+                        id: editColor1
+                        Layout.fillWidth: true
+                        color: Theme.text
+                        font.family: Theme.monoFamily
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 34
+                        Layout.preferredHeight: 34
+                        radius: 6
+                        color: /^#[0-9a-fA-F]{6}$/.test(editColor2.text) ? editColor2.text : "transparent"
+                        border.color: Theme.strokeStrong
+                    }
+
+                    TextField {
+                        id: editColor2
+                        Layout.fillWidth: true
+                        color: Theme.text
+                        font.family: Theme.monoFamily
+                    }
                 }
 
                 Text {
@@ -677,6 +776,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
+                    visible: editingLayer.plugin !== "builtin.color_spread"
                 }
 
                 Slider {
@@ -685,6 +785,7 @@ ApplicationWindow {
                     from: 0
                     to: 1
                     value: 0.35
+                    visible: editingLayer.plugin !== "builtin.color_spread"
                 }
 
                 Text {
@@ -692,6 +793,7 @@ ApplicationWindow {
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
+                    visible: editingLayer.plugin !== "builtin.color_spread"
                 }
 
                 Slider {
@@ -700,6 +802,42 @@ ApplicationWindow {
                     from: 1
                     to: 2
                     value: 1.12
+                    visible: editingLayer.plugin !== "builtin.color_spread"
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: effectPickerDialog
+        title: "Add Effect"
+        modal: true
+        standardButtons: Dialog.Cancel
+        width: 360
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            PillButton {
+                text: "Zoom Blur"
+                iconText: "\uE7B3"
+                Layout.fillWidth: true
+                onClicked: {
+                    effectPickerDialog.close()
+                    zoomBlurDialog.open()
+                }
+            }
+
+            PillButton {
+                text: "Color Spread"
+                iconText: "\uE790"
+                Layout.fillWidth: true
+                onClicked: {
+                    effectPickerDialog.close()
+                    colorSpreadDialog.open()
                 }
             }
         }
@@ -808,7 +946,7 @@ ApplicationWindow {
 
             Text {
                 Layout.fillWidth: true
-                text: "Re-analyze this mask to make only the keyed pixels participate in the effect."
+                text: "Re-analyze this mask so effects can use its keyed area."
                 color: "#b45309"
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
@@ -864,6 +1002,129 @@ ApplicationWindow {
                 from: 1
                 to: 2
                 value: 1.12
+            }
+        }
+    }
+
+    Dialog {
+        id: colorSpreadDialog
+        title: "Add Color Spread"
+        modal: true
+        standardButtons: Dialog.Save | Dialog.Cancel
+        width: 430
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        onOpened: {
+            colorSpreadName.text = "Color spread"
+            colorSpreadMaskLayer.currentIndex = maskLayersForVisual(analysisVisualPath).length > 0 ? 0 : -1
+            colorSpreadInterval.value = 1.0
+            colorSpreadDuration.value = 0.8
+            colorSpreadColor1.text = "#00c8ff"
+            colorSpreadColor2.text = "#ff4fd8"
+        }
+        onAccepted: window.createColorSpreadEffect()
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Text {
+                text: analysisVisualName.length > 0 ? "Source: " + analysisVisualName : "Select a visual source first"
+                color: analysisVisualName.length > 0 ? Theme.subtleText : "#b91c1c"
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+                Layout.fillWidth: true
+            }
+
+            TextField {
+                id: colorSpreadName
+                Layout.fillWidth: true
+                color: Theme.text
+                font.family: Theme.fontFamily
+                placeholderText: "Effect name"
+            }
+
+            Text {
+                text: "Start mask"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            ComboBox {
+                id: colorSpreadMaskLayer
+                Layout.fillWidth: true
+                model: maskLayersForVisual(analysisVisualPath)
+                textRole: "name"
+                enabled: count > 0
+            }
+
+            Text {
+                text: "Trigger every " + colorSpreadInterval.value.toFixed(2) + " seconds"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            Slider {
+                id: colorSpreadInterval
+                Layout.fillWidth: true
+                from: 0.1
+                to: 10
+                value: 1
+                stepSize: 0.1
+            }
+
+            Text {
+                text: "Spread duration " + colorSpreadDuration.value.toFixed(2) + " seconds"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            Slider {
+                id: colorSpreadDuration
+                Layout.fillWidth: true
+                from: 0.1
+                to: 3
+                value: 0.8
+                stepSize: 0.1
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
+                    radius: 6
+                    color: /^#[0-9a-fA-F]{6}$/.test(colorSpreadColor1.text) ? colorSpreadColor1.text : "transparent"
+                    border.color: Theme.strokeStrong
+                }
+
+                TextField {
+                    id: colorSpreadColor1
+                    Layout.fillWidth: true
+                    color: Theme.text
+                    font.family: Theme.monoFamily
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
+                    radius: 6
+                    color: /^#[0-9a-fA-F]{6}$/.test(colorSpreadColor2.text) ? colorSpreadColor2.text : "transparent"
+                    border.color: Theme.strokeStrong
+                }
+
+                TextField {
+                    id: colorSpreadColor2
+                    Layout.fillWidth: true
+                    color: Theme.text
+                    font.family: Theme.monoFamily
+                }
             }
         }
     }
@@ -1134,7 +1395,7 @@ ApplicationWindow {
                     onGeneratedLayerDeleteRequested: function(kind, id) {
                         window.deleteGeneratedLayer(kind, id)
                     }
-                    onEffectAddRequested: zoomBlurDialog.open()
+                    onEffectAddRequested: effectPickerDialog.open()
                     SplitView.fillWidth: true
                     SplitView.minimumHeight: 210
                     SplitView.preferredHeight: 290

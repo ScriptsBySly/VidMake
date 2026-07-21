@@ -10,6 +10,16 @@ FORMAT_VERSION = 1
 SUPPORTED_RESOLUTIONS = {(1080, 1920), (1920, 1080)}
 
 
+def _is_hex_color(value: str) -> bool:
+    if len(value) != 7 or not value.startswith("#"):
+        return False
+    try:
+        int(value[1:], 16)
+    except ValueError:
+        return False
+    return True
+
+
 @dataclass(frozen=True)
 class ProjectSettings:
     width: int = 1080
@@ -65,6 +75,9 @@ class EffectLayer:
     trigger_interval_seconds: float
     blur_strength: float
     zoom_amount: float
+    color_1: str
+    color_2: str
+    spread_duration_seconds: float
 
 
 @dataclass(frozen=True)
@@ -237,7 +250,7 @@ def validate_project(data: Any) -> dict[str, Any]:
             raise ValueError(f"Effect layer #{index + 1} is missing an id.")
         if not isinstance(name, str) or not name:
             raise ValueError(f"Effect layer #{index + 1} is missing a name.")
-        if plugin != "builtin.zoom_blur":
+        if plugin not in {"builtin.zoom_blur", "builtin.color_spread"}:
             raise ValueError(f"Effect layer #{index + 1} has an unsupported plugin.")
         if not isinstance(source_visual_name, str):
             raise ValueError(f"Effect layer #{index + 1} has an invalid source visual name.")
@@ -246,15 +259,23 @@ def validate_project(data: Any) -> dict[str, Any]:
         trigger_mode = str(layer.get("trigger_mode", "interval"))
         if trigger_mode not in {"interval", "keyframes"}:
             raise ValueError(f"Effect layer #{index + 1} has an invalid trigger mode.")
+        if plugin == "builtin.color_spread":
+            trigger_mode = "interval"
         keyframe_layer_id = str(layer.get("keyframe_layer_id", ""))
         if trigger_mode == "keyframes" and not keyframe_layer_id:
             raise ValueError(f"Effect layer #{index + 1} must reference an audio keyframe layer.")
         mask_mode = str(layer.get("mask_mode", "none"))
+        if plugin == "builtin.color_spread":
+            mask_mode = "mask"
         if mask_mode not in {"none", "mask"}:
             raise ValueError(f"Effect layer #{index + 1} has an invalid mask mode.")
         mask_layer_id = str(layer.get("mask_layer_id", ""))
         if mask_mode == "mask" and not mask_layer_id:
             raise ValueError(f"Effect layer #{index + 1} must reference a mask layer.")
+        color_1 = str(layer.get("color_1", "#00c8ff"))
+        color_2 = str(layer.get("color_2", "#ff4fd8"))
+        if plugin == "builtin.color_spread" and (not _is_hex_color(color_1) or not _is_hex_color(color_2)):
+            raise ValueError(f"Effect layer #{index + 1} has an invalid color spread color.")
 
         validated_effect_layers.append(
             {
@@ -270,6 +291,9 @@ def validate_project(data: Any) -> dict[str, Any]:
                 "trigger_interval_seconds": max(0.05, float(layer.get("trigger_interval_seconds", 1.0))),
                 "blur_strength": max(0.0, float(layer.get("blur_strength", 0.35))),
                 "zoom_amount": max(1.0, float(layer.get("zoom_amount", 1.12))),
+                "color_1": color_1,
+                "color_2": color_2,
+                "spread_duration_seconds": max(0.05, float(layer.get("spread_duration_seconds", 0.8))),
             }
         )
 
