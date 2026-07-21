@@ -37,3 +37,14 @@ def test_validate_project_rejects_unknown_asset_kind() -> None:
 
     with pytest.raises(ValueError, match="unsupported kind"):
         validate_project(project)
+
+
+def test_validate_project_accepts_horizontal_resolution() -> None:
+    project = empty_project()
+    project["settings"]["width"] = 1920
+    project["settings"]["height"] = 1080
+
+    validated = validate_project(project)
+
+    assert validated["settings"]["width"] == 1920
+    assert validated["settings"]["height"] == 1080

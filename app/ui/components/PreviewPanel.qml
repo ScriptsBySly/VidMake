@@ -10,6 +10,8 @@ Panel {
     property string assetName: ""
     property string assetKind: ""
     property string assetPath: ""
+    property int projectWidth: 1080
+    property int projectHeight: 1920
     readonly property string mediaUrl: assetPath.length > 0 ? pathToUrl(assetPath) : ""
     readonly property string assetExtension: extensionFromName(assetName.length > 0 ? assetName : assetPath)
     readonly property bool isAudio: assetKind === "Audio"
@@ -106,8 +108,8 @@ Panel {
             Rectangle {
                 id: frame
                 anchors.centerIn: parent
-                width: Math.min(parent.width - 48, (parent.height - 48) * 9 / 16)
-                height: width * 16 / 9
+                width: Math.min(parent.width - 48, (parent.height - 48) * root.projectWidth / root.projectHeight)
+                height: width * root.projectHeight / root.projectWidth
                 radius: 6
                 color: "#1c1d20"
                 border.color: "#303238"
@@ -168,7 +170,7 @@ Panel {
                     anchors.bottomMargin: 18
                     text: root.assetName.length > 0
                         ? root.assetName
-                        : root.visualName.length > 0 ? root.visualName : "1080 x 1920"
+                        : root.visualName.length > 0 ? root.visualName : root.projectWidth + " x " + root.projectHeight
                     color: "#a9adb7"
                     font.family: Theme.fontFamily
                     font.pixelSize: 12

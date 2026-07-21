@@ -13,6 +13,8 @@ ApplicationWindow {
     property string selectedAssetPath: ""
     property string projectPath: ""
     property string statusMessage: "Ready"
+    property int projectWidth: 1080
+    property int projectHeight: 1920
 
     width: 1440
     height: 900
@@ -38,8 +40,8 @@ ApplicationWindow {
         return {
             "format_version": 1,
             "settings": {
-                "width": 1080,
-                "height": 1920,
+                "width": projectWidth,
+                "height": projectHeight,
                 "frame_rate": 30,
                 "duration": 15.0
             },
@@ -53,6 +55,8 @@ ApplicationWindow {
         selectedAssetName = ""
         selectedAssetKind = ""
         selectedAssetPath = ""
+        projectWidth = data.settings && data.settings.width ? data.settings.width : 1080
+        projectHeight = data.settings && data.settings.height ? data.settings.height : 1920
         projectPath = path || ""
     }
 
@@ -99,6 +103,55 @@ ApplicationWindow {
             "All files (*)"
         ]
         onAccepted: window.saveProject(selectedFile)
+    }
+
+    Dialog {
+        id: settingsDialog
+        title: "Settings"
+        modal: true
+        standardButtons: Dialog.Ok
+        width: 390
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 14
+
+            Text {
+                text: "Project resolution"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                font.weight: Font.DemiBold
+            }
+
+            ButtonGroup {
+                id: resolutionGroup
+            }
+
+            RadioButton {
+                text: "Vertical 1080 x 1920"
+                checked: window.projectWidth === 1080 && window.projectHeight === 1920
+                ButtonGroup.group: resolutionGroup
+                onClicked: {
+                    window.projectWidth = 1080
+                    window.projectHeight = 1920
+                    window.statusMessage = "Resolution set to 1080 x 1920"
+                }
+            }
+
+            RadioButton {
+                text: "Horizontal 1920 x 1080"
+                checked: window.projectWidth === 1920 && window.projectHeight === 1080
+                ButtonGroup.group: resolutionGroup
+                onClicked: {
+                    window.projectWidth = 1920
+                    window.projectHeight = 1080
+                    window.statusMessage = "Resolution set to 1920 x 1080"
+                }
+            }
+        }
     }
 
     Connections {
@@ -166,6 +219,14 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: "Save project"
                 onClicked: saveProjectDialog.open()
+            }
+
+            ToolButton {
+                text: "\uE713"
+                font.family: "Segoe MDL2 Assets"
+                ToolTip.visible: hovered
+                ToolTip.text: "Settings"
+                onClicked: settingsDialog.open()
             }
 
             Text {
@@ -250,6 +311,8 @@ ApplicationWindow {
                     assetName: window.selectedAssetName
                     assetKind: window.selectedAssetKind
                     assetPath: window.selectedAssetPath
+                    projectWidth: window.projectWidth
+                    projectHeight: window.projectHeight
                     SplitView.fillWidth: true
                     SplitView.fillHeight: true
                     SplitView.minimumHeight: 320

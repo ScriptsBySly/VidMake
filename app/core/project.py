@@ -7,6 +7,7 @@ from typing import Any
 
 
 FORMAT_VERSION = 1
+SUPPORTED_RESOLUTIONS = {(1080, 1920), (1920, 1080)}
 
 
 @dataclass(frozen=True)
@@ -66,11 +67,16 @@ def validate_project(data: Any) -> dict[str, Any]:
             raise ValueError(f"Asset #{index + 1} is missing a path.")
         validated_assets.append({"name": name, "kind": kind, "path": path})
 
+    width = int(settings.get("width", 1080))
+    height = int(settings.get("height", 1920))
+    if (width, height) not in SUPPORTED_RESOLUTIONS:
+        raise ValueError(f"Unsupported project resolution: {width}x{height}.")
+
     return {
         "format_version": FORMAT_VERSION,
         "settings": {
-            "width": int(settings.get("width", 1080)),
-            "height": int(settings.get("height", 1920)),
+            "width": width,
+            "height": height,
             "frame_rate": int(settings.get("frame_rate", 30)),
             "duration": float(settings.get("duration", 15.0)),
         },
