@@ -90,6 +90,7 @@ ApplicationWindow {
             timelinePanel.loadTimelineData(assets, audioKeyframeLayers, maskLayers, effectLayers)
             previewPanel.loadCompositionAssets(assets)
             previewPanel.loadAudioKeyframeLayers(audioKeyframeLayers)
+            previewPanel.loadCompositionMasks(maskLayers)
             previewPanel.loadCompositionEffects(effectLayers)
         }
     }
@@ -111,6 +112,37 @@ ApplicationWindow {
             return ""
         }
         return audioKeyframeLayers[index].id || ""
+    }
+
+    function maskLayersForVisual(sourcePath) {
+        var matches = []
+        for (var i = 0; i < maskLayers.length; i++) {
+            if ((maskLayers[i].source_video_path || "") === sourcePath) {
+                matches.push(maskLayers[i])
+            }
+        }
+        return matches
+    }
+
+    function maskLayerIndexForVisual(sourcePath, layerId) {
+        var matches = maskLayersForVisual(sourcePath)
+        if (layerId.length === 0) {
+            return matches.length > 0 ? 0 : -1
+        }
+        for (var i = 0; i < matches.length; i++) {
+            if (matches[i].id === layerId) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    function maskLayerIdAtForVisual(sourcePath, index) {
+        var matches = maskLayersForVisual(sourcePath)
+        if (index < 0 || index >= matches.length) {
+            return ""
+        }
+        return matches[index].id || ""
     }
 
     function addAudioKeyframeLayer(layerJson) {
@@ -150,6 +182,12 @@ ApplicationWindow {
             statusMessage = "Create an audio keyframe layer before using beat keyframes"
             return
         }
+        var maskMode = zoomMaskMode.currentIndex === 1 ? "mask" : "none"
+        var maskLayerId = maskMode === "mask" ? maskLayerIdAtForVisual(analysisVisualPath, zoomMaskLayer.currentIndex) : ""
+        if (maskMode === "mask" && maskLayerId.length === 0) {
+            statusMessage = "Create a mask layer for this visual before using mask mode"
+            return
+        }
         addEffectLayer({
             "id": "effect-" + Date.now(),
             "name": zoomBlurName.text,
@@ -158,6 +196,8 @@ ApplicationWindow {
             "source_visual_path": analysisVisualPath,
             "trigger_mode": triggerMode,
             "keyframe_layer_id": keyframeLayerId,
+            "mask_mode": maskMode,
+            "mask_layer_id": maskLayerId,
             "trigger_interval_seconds": triggerInterval.value,
             "blur_strength": blurStrength.value,
             "zoom_amount": zoomAmount.value
@@ -234,6 +274,8 @@ ApplicationWindow {
         } else {
             editTriggerMode.currentIndex = (layer.trigger_mode || "interval") === "keyframes" ? 1 : 0
             editKeyframeLayer.currentIndex = audioKeyframeLayerIndex(layer.keyframe_layer_id || "")
+            editMaskMode.currentIndex = (layer.mask_mode || "none") === "mask" ? 1 : 0
+            editMaskLayer.currentIndex = maskLayerIndexForVisual(layer.source_visual_path || "", layer.mask_layer_id || "")
             editTriggerInterval.value = layer.trigger_interval_seconds || 1.0
             editBlurStrength.value = layer.blur_strength || 0.35
             editZoomAmount.value = layer.zoom_amount || 1.12
@@ -263,8 +305,16 @@ ApplicationWindow {
                 statusMessage = "Create an audio keyframe layer before using beat keyframes"
                 return
             }
+            var editMaskModeValue = editMaskMode.currentIndex === 1 ? "mask" : "none"
+            var editMaskLayerId = editMaskModeValue === "mask" ? maskLayerIdAtForVisual(layer.source_visual_path || "", editMaskLayer.currentIndex) : ""
+            if (editMaskModeValue === "mask" && editMaskLayerId.length === 0) {
+                statusMessage = "Create a mask layer for this visual before using mask mode"
+                return
+            }
             layer.trigger_mode = editMode
             layer.keyframe_layer_id = editKeyframeLayerId
+            layer.mask_mode = editMaskModeValue
+            layer.mask_layer_id = editMaskLayerId
             layer.trigger_interval_seconds = editTriggerInterval.value
             layer.blur_strength = editBlurStrength.value
             layer.zoom_amount = editZoomAmount.value
@@ -550,6 +600,36 @@ ApplicationWindow {
                 }
 
                 Text {
+                    text: "Effect area"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                ComboBox {
+                    id: editMaskMode
+                    Layout.fillWidth: true
+                    model: ["Entire visual", "Mask layer"]
+                }
+
+                Text {
+                    text: "Mask layer"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    visible: editMaskMode.currentIndex === 1
+                }
+
+                ComboBox {
+                    id: editMaskLayer
+                    Layout.fillWidth: true
+                    model: maskLayersForVisual(editingLayer.source_visual_path || "")
+                    textRole: "name"
+                    enabled: count > 0
+                    visible: editMaskMode.currentIndex === 1
+                }
+
+                Text {
                     text: "Trigger every " + editTriggerInterval.value.toFixed(2) + " seconds"
                     color: Theme.text
                     font.family: Theme.fontFamily
@@ -612,6 +692,8 @@ ApplicationWindow {
             zoomBlurName.text = "Zoom blur"
             zoomTriggerMode.currentIndex = 0
             zoomKeyframeLayer.currentIndex = audioKeyframeLayers.length > 0 ? 0 : -1
+            zoomMaskMode.currentIndex = 0
+            zoomMaskLayer.currentIndex = maskLayersForVisual(analysisVisualPath).length > 0 ? 0 : -1
             triggerInterval.value = 1.0
             blurStrength.value = 0.35
             zoomAmount.value = 1.12
@@ -663,11 +745,41 @@ ApplicationWindow {
             ComboBox {
                 id: zoomKeyframeLayer
                 Layout.fillWidth: true
-                    model: audioKeyframeLayers
-                    textRole: "name"
-                    enabled: audioKeyframeLayers.length > 0
-                    visible: zoomTriggerMode.currentIndex === 1
-                }
+                model: audioKeyframeLayers
+                textRole: "name"
+                enabled: audioKeyframeLayers.length > 0
+                visible: zoomTriggerMode.currentIndex === 1
+            }
+
+            Text {
+                text: "Effect area"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            ComboBox {
+                id: zoomMaskMode
+                Layout.fillWidth: true
+                model: ["Entire visual", "Mask layer"]
+            }
+
+            Text {
+                text: "Mask layer"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                visible: zoomMaskMode.currentIndex === 1
+            }
+
+            ComboBox {
+                id: zoomMaskLayer
+                Layout.fillWidth: true
+                model: maskLayersForVisual(analysisVisualPath)
+                textRole: "name"
+                enabled: count > 0
+                visible: zoomMaskMode.currentIndex === 1
+            }
 
             Text {
                 text: "Trigger every " + triggerInterval.value.toFixed(2) + " seconds"

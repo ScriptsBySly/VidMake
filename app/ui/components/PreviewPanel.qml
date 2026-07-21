@@ -18,6 +18,7 @@ Panel {
     property string compositionVisualPath: ""
     property var compositionEffectLayers: []
     property var audioKeyframeLayers: []
+    property var compositionMaskLayers: []
     property bool compositionMode: false
     readonly property string mediaUrl: assetPath.length > 0 ? pathToUrl(assetPath) : ""
     readonly property string compositionAudioUrl: compositionAudioPath.length > 0 ? pathToUrl(compositionAudioPath) : ""
@@ -41,8 +42,15 @@ Panel {
         : player.playbackState === MediaPlayer.PlayingState
     readonly property var activeZoomBlurEffect: zoomBlurEffectForCurrentVisual()
     readonly property real zoomBlurPulse: zoomBlurPulseValue()
-    readonly property real zoomBlurScale: activeZoomBlurEffect ? 1.0 + (activeZoomBlurEffect.zoom_amount - 1.0) * zoomBlurPulse : 1.0
-    readonly property real zoomBlurOpacity: activeZoomBlurEffect ? activeZoomBlurEffect.blur_strength * zoomBlurPulse : 0.0
+    readonly property bool zoomBlurMaskMode: activeZoomBlurEffect && (activeZoomBlurEffect.mask_mode || "none") === "mask"
+    readonly property var activeZoomBlurMaskLayer: maskLayerById(zoomBlurMaskMode ? activeZoomBlurEffect.mask_layer_id || "" : "")
+    readonly property bool zoomBlurUsesMask: activeZoomBlurMaskLayer !== null
+    readonly property string zoomBlurCutoutPath: zoomBlurUsesMask ? activeZoomBlurMaskLayer.cutout_path || activeZoomBlurMaskLayer.preview_path || "" : ""
+    readonly property string zoomBlurCutoutUrl: zoomBlurCutoutPath.length > 0 ? pathToUrl(zoomBlurCutoutPath) : ""
+    readonly property real zoomBlurOriginX: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_x || 0.5 : 0.5
+    readonly property real zoomBlurOriginY: zoomBlurUsesMask ? activeZoomBlurMaskLayer.mask_center_y || 0.5 : 0.5
+    readonly property real zoomBlurScale: activeZoomBlurEffect && !zoomBlurMaskMode ? 1.0 + (activeZoomBlurEffect.zoom_amount - 1.0) * zoomBlurPulse : 1.0
+    readonly property real zoomBlurOpacity: activeZoomBlurEffect && (!zoomBlurMaskMode || (zoomBlurUsesMask && zoomBlurCutoutUrl.length > 0)) ? activeZoomBlurEffect.blur_strength * zoomBlurPulse : 0.0
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -162,6 +170,10 @@ Panel {
         audioKeyframeLayers = items
     }
 
+    function loadCompositionMasks(items) {
+        compositionMaskLayers = items
+    }
+
     function audioKeyframeLayerById(layerId) {
         if (layerId.length === 0) {
             return null
@@ -172,6 +184,31 @@ Panel {
             }
         }
         return null
+    }
+
+    function maskLayerById(layerId) {
+        if (layerId.length === 0) {
+            return null
+        }
+        for (var i = 0; i < compositionMaskLayers.length; i++) {
+            if (compositionMaskLayers[i].id === layerId) {
+                return compositionMaskLayers[i]
+            }
+        }
+        return null
+    }
+
+    function maskBound(name, fallback) {
+        if (!zoomBlurUsesMask || !activeZoomBlurMaskLayer.mask_bounds) {
+            return fallback
+        }
+        var value = activeZoomBlurMaskLayer.mask_bounds[name]
+        return value === undefined ? fallback : value
+    }
+
+    function zoomBlurBurstScale(index) {
+        var zoomAmount = activeZoomBlurEffect ? activeZoomBlurEffect.zoom_amount : 1.12
+        return 1.0 + (zoomAmount - 1.0) * zoomBlurPulse * (1.0 + index * 0.55)
     }
 
     function zoomBlurEffectForCurrentVisual() {
@@ -430,23 +467,82 @@ Panel {
 
                 Item {
                     anchors.fill: parent
-                    visible: root.zoomBlurOpacity > 0.01
+                    visible: root.zoomBlurOpacity > 0.01 && !root.zoomBlurMaskMode
                     opacity: root.zoomBlurOpacity
+
+                    Rectangle {
+                        x: root.maskBound("min_x", 0.0) * frame.width
+                        y: root.maskBound("min_y", 0.0) * frame.height
+                        width: root.zoomBlurUsesMask ? Math.max(12, (root.maskBound("max_x", 1.0) - root.maskBound("min_x", 0.0)) * frame.width) : frame.width
+                        height: root.zoomBlurUsesMask ? Math.max(12, (root.maskBound("max_y", 1.0) - root.maskBound("min_y", 0.0)) * frame.height) : frame.height
+                        color: "transparent"
+                        border.color: root.zoomBlurUsesMask ? "#ffffff" : "transparent"
+                        border.width: root.zoomBlurUsesMask ? 2 : 0
+                        radius: 6
+                        scale: 1.0 + root.zoomBlurPulse * 0.25
+                        opacity: root.zoomBlurUsesMask ? 0.36 : 0.0
+                        transformOrigin: Item.Center
+                    }
 
                     Repeater {
                         model: 12
 
                         Rectangle {
                             required property int index
-                            width: frame.width * 0.42
+                            width: frame.width * (root.zoomBlurUsesMask ? 0.62 : 0.42) * (0.65 + root.zoomBlurPulse * 0.55)
                             height: 2
                             radius: 1
                             color: "white"
                             opacity: 0.42
-                            x: frame.width / 2
-                            y: frame.height / 2
+                            x: frame.width * root.zoomBlurOriginX
+                            y: frame.height * root.zoomBlurOriginY
                             transformOrigin: Item.Left
                             rotation: index * 30
+                        }
+                    }
+
+                    Repeater {
+                        model: root.zoomBlurUsesMask ? 3 : 0
+
+                        Rectangle {
+                            required property int index
+                            width: 34 + index * 34 + root.zoomBlurPulse * 92
+                            height: width
+                            radius: width / 2
+                            color: "transparent"
+                            border.color: "white"
+                            border.width: 2
+                            opacity: 0.38 - index * 0.1
+                            x: frame.width * root.zoomBlurOriginX - width / 2
+                            y: frame.height * root.zoomBlurOriginY - height / 2
+                        }
+                    }
+                }
+
+                Item {
+                    anchors.fill: parent
+                    visible: root.zoomBlurMaskMode && root.zoomBlurOpacity > 0.01
+                    opacity: Math.min(1.0, 0.38 + root.zoomBlurOpacity)
+
+                    Repeater {
+                        model: 4
+
+                        Image {
+                            id: maskCutoutBurst
+                            required property int index
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            source: root.zoomBlurCutoutUrl
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            cache: false
+                            opacity: Math.max(0.0, 0.42 - index * 0.1) * root.zoomBlurPulse
+                            transform: Scale {
+                                origin.x: maskCutoutBurst.width * root.zoomBlurOriginX
+                                origin.y: maskCutoutBurst.height * root.zoomBlurOriginY
+                                xScale: root.zoomBlurBurstScale(maskCutoutBurst.index)
+                                yScale: root.zoomBlurBurstScale(maskCutoutBurst.index)
+                            }
                         }
                     }
                 }

@@ -111,9 +111,28 @@ def analyze_chroma_key(path: Path, settings: ChromaKeySettings, cache_root: Path
         f"{path}|{path.stat().st_mtime_ns}|{settings}|{time.time_ns()}".encode("utf-8")
     ).hexdigest()[:16]
     preview_path = cache_root / f"mask-preview-{digest}.png"
+    cutout_path = cache_root / f"mask-cutout-{digest}.png"
     cv2.imwrite(str(preview_path), mask)
+    frame_rgba = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGBA)
+    frame_rgba[:, :, 3] = mask
+    cv2.imwrite(str(cutout_path), frame_rgba)
 
     kept_ratio = float(mask.mean() / 255.0)
+    ys, xs = np.nonzero(mask > 0)
+    if len(xs) > 0 and width > 0 and height > 0:
+        min_x = float(xs.min() / max(1, width - 1))
+        max_x = float(xs.max() / max(1, width - 1))
+        min_y = float(ys.min() / max(1, height - 1))
+        max_y = float(ys.max() / max(1, height - 1))
+        center_x = float(xs.mean() / max(1, width - 1))
+        center_y = float(ys.mean() / max(1, height - 1))
+    else:
+        min_x = 0.0
+        max_x = 1.0
+        min_y = 0.0
+        max_y = 1.0
+        center_x = 0.5
+        center_y = 0.5
     return {
         "source": str(path),
         "source_type": source_type,
@@ -124,6 +143,16 @@ def analyze_chroma_key(path: Path, settings: ChromaKeySettings, cache_root: Path
         "settings": asdict(settings),
         "preview_path": str(preview_path),
         "preview_url": preview_path.resolve().as_uri(),
+        "cutout_path": str(cutout_path),
+        "cutout_url": cutout_path.resolve().as_uri(),
         "kept_ratio": round(kept_ratio, 4),
         "transparent_ratio": round(1.0 - kept_ratio, 4),
+        "mask_center_x": round(center_x, 4),
+        "mask_center_y": round(center_y, 4),
+        "mask_bounds": {
+            "min_x": round(min_x, 4),
+            "min_y": round(min_y, 4),
+            "max_x": round(max_x, 4),
+            "max_y": round(max_y, 4),
+        },
     }

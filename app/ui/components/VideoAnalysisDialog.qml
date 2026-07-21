@@ -95,7 +95,16 @@ Dialog {
             "key_color": settings.key_color || colorToHex(keyColor),
             "tolerance": settings.tolerance || toleranceSlider.value,
             "inverted": settings.inverted || false,
-            "preview_path": analysisResult.preview_path || ""
+            "preview_path": analysisResult.preview_path || "",
+            "cutout_path": analysisResult.cutout_path || "",
+            "mask_center_x": analysisResult.mask_center_x || 0.5,
+            "mask_center_y": analysisResult.mask_center_y || 0.5,
+            "mask_bounds": analysisResult.mask_bounds || {
+                "min_x": 0.0,
+                "min_y": 0.0,
+                "max_x": 1.0,
+                "max_y": 1.0
+            }
         }
         root.maskLayerCreated(JSON.stringify(layer))
     }
@@ -274,7 +283,9 @@ Dialog {
                                 ? (analysisResult.source_type === "image" ? "Image " : "Video ")
                                     + analysisResult.width + " x " + analysisResult.height + "\n"
                                     + "Kept " + Math.round((analysisResult.kept_ratio || 0) * 100) + "%\n"
-                                    + "Transparent " + Math.round((analysisResult.transparent_ratio || 0) * 100) + "%"
+                                    + "Transparent " + Math.round((analysisResult.transparent_ratio || 0) * 100) + "%\n"
+                                    + "Origin " + Math.round((analysisResult.mask_center_x || 0.5) * 100) + "%, "
+                                    + Math.round((analysisResult.mask_center_y || 0.5) * 100) + "%"
                                 : "Preview a visual, pick a key color, then analyze."
                         color: analysisResult.error ? "#b91c1c" : Theme.subtleText
                         font.family: Theme.fontFamily

@@ -48,6 +48,7 @@ class MaskLayer:
     tolerance: float
     inverted: bool
     preview_path: str
+    cutout_path: str
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ class EffectLayer:
     source_visual_path: str
     trigger_mode: str
     keyframe_layer_id: str
+    mask_mode: str
+    mask_layer_id: str
     trigger_interval_seconds: float
     blur_strength: float
     zoom_amount: float
@@ -182,6 +185,7 @@ def validate_project(data: Any) -> dict[str, Any]:
         source_type = layer.get("source_type", "video")
         key_color = layer.get("key_color")
         preview_path = layer.get("preview_path", "")
+        cutout_path = layer.get("cutout_path", "")
         if not isinstance(layer_id, str) or not layer_id:
             raise ValueError(f"Mask layer #{index + 1} is missing an id.")
         if not isinstance(name, str) or not name:
@@ -194,6 +198,9 @@ def validate_project(data: Any) -> dict[str, Any]:
             raise ValueError(f"Mask layer #{index + 1} has an invalid source type.")
         if not isinstance(key_color, str) or not key_color.startswith("#"):
             raise ValueError(f"Mask layer #{index + 1} has an invalid chroma key color.")
+        mask_bounds = layer.get("mask_bounds", {})
+        if not isinstance(mask_bounds, dict):
+            mask_bounds = {}
         validated_mask_layers.append(
             {
                 "id": layer_id,
@@ -205,6 +212,15 @@ def validate_project(data: Any) -> dict[str, Any]:
                 "tolerance": float(layer.get("tolerance", 0.28)),
                 "inverted": bool(layer.get("inverted", False)),
                 "preview_path": str(preview_path),
+                "cutout_path": str(cutout_path),
+                "mask_center_x": float(layer.get("mask_center_x", 0.5)),
+                "mask_center_y": float(layer.get("mask_center_y", 0.5)),
+                "mask_bounds": {
+                    "min_x": float(mask_bounds.get("min_x", 0.0)),
+                    "min_y": float(mask_bounds.get("min_y", 0.0)),
+                    "max_x": float(mask_bounds.get("max_x", 1.0)),
+                    "max_y": float(mask_bounds.get("max_y", 1.0)),
+                },
             }
         )
 
@@ -233,6 +249,12 @@ def validate_project(data: Any) -> dict[str, Any]:
         keyframe_layer_id = str(layer.get("keyframe_layer_id", ""))
         if trigger_mode == "keyframes" and not keyframe_layer_id:
             raise ValueError(f"Effect layer #{index + 1} must reference an audio keyframe layer.")
+        mask_mode = str(layer.get("mask_mode", "none"))
+        if mask_mode not in {"none", "mask"}:
+            raise ValueError(f"Effect layer #{index + 1} has an invalid mask mode.")
+        mask_layer_id = str(layer.get("mask_layer_id", ""))
+        if mask_mode == "mask" and not mask_layer_id:
+            raise ValueError(f"Effect layer #{index + 1} must reference a mask layer.")
 
         validated_effect_layers.append(
             {
@@ -243,6 +265,8 @@ def validate_project(data: Any) -> dict[str, Any]:
                 "source_visual_path": source_visual_path,
                 "trigger_mode": trigger_mode,
                 "keyframe_layer_id": keyframe_layer_id,
+                "mask_mode": mask_mode,
+                "mask_layer_id": mask_layer_id,
                 "trigger_interval_seconds": max(0.05, float(layer.get("trigger_interval_seconds", 1.0))),
                 "blur_strength": max(0.0, float(layer.get("blur_strength", 0.35))),
                 "zoom_amount": max(1.0, float(layer.get("zoom_amount", 1.12))),

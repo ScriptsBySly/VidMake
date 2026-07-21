@@ -85,12 +85,19 @@ def test_validate_project_preserves_mask_layers() -> None:
             "tolerance": 0.28,
             "inverted": False,
             "preview_path": "H:/.vidmake-cache/masks/mask-preview.png",
+            "cutout_path": "H:/.vidmake-cache/masks/mask-cutout.png",
+            "mask_center_x": 0.42,
+            "mask_center_y": 0.37,
+            "mask_bounds": {"min_x": 0.2, "min_y": 0.1, "max_x": 0.7, "max_y": 0.8},
         }
     ]
 
     validated = validate_project(project)
 
     assert validated["mask_layers"][0]["key_color"] == "#00ff00"
+    assert validated["mask_layers"][0]["cutout_path"].endswith("mask-cutout.png")
+    assert validated["mask_layers"][0]["mask_center_x"] == 0.42
+    assert validated["mask_layers"][0]["mask_bounds"]["max_y"] == 0.8
 
 
 def test_validate_project_preserves_zoom_blur_effect_layers() -> None:
@@ -104,6 +111,8 @@ def test_validate_project_preserves_zoom_blur_effect_layers() -> None:
             "source_visual_path": "H:/media/clip.mp4",
             "trigger_mode": "keyframes",
             "keyframe_layer_id": "audio-keyframes-1",
+            "mask_mode": "mask",
+            "mask_layer_id": "mask-1",
             "trigger_interval_seconds": 0.5,
             "blur_strength": 0.4,
             "zoom_amount": 1.18,
@@ -115,4 +124,6 @@ def test_validate_project_preserves_zoom_blur_effect_layers() -> None:
     assert validated["effect_layers"][0]["plugin"] == "builtin.zoom_blur"
     assert validated["effect_layers"][0]["trigger_mode"] == "keyframes"
     assert validated["effect_layers"][0]["keyframe_layer_id"] == "audio-keyframes-1"
+    assert validated["effect_layers"][0]["mask_mode"] == "mask"
+    assert validated["effect_layers"][0]["mask_layer_id"] == "mask-1"
     assert validated["effect_layers"][0]["zoom_amount"] == 1.18
