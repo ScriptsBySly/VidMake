@@ -353,6 +353,7 @@ ApplicationWindow {
             "mask_layer_id": maskLayerId,
             "trigger_interval_seconds": colorSpreadInterval.value,
             "spread_duration_seconds": colorSpreadDuration.value,
+            "spread_cutoff_seconds": colorSpreadCutoff.value,
             "finish_spread": colorSpreadFinish.checked,
             "color_1": colorSpreadColor1.text,
             "color_2": colorSpreadColor2.text
@@ -472,6 +473,7 @@ ApplicationWindow {
             editBlurStrength.value = layer.blur_strength || 0.35
             editZoomAmount.value = layer.zoom_amount || 1.12
             editSpreadDuration.value = layer.spread_duration_seconds || 0.8
+            editSpreadCutoff.value = layer.spread_cutoff_seconds || layer.spread_duration_seconds || 0.8
             editFinishSpread.checked = !!layer.finish_spread
             editColor1.text = layer.color_1 || "#00c8ff"
             editColor2.text = layer.color_2 || "#ff4fd8"
@@ -526,6 +528,7 @@ ApplicationWindow {
             layer.blur_strength = editBlurStrength.value
             layer.zoom_amount = editZoomAmount.value
             layer.spread_duration_seconds = editSpreadDuration.value
+            layer.spread_cutoff_seconds = editSpreadCutoff.value
             layer.finish_spread = editFinishSpread.checked
             layer.color_1 = editColor1.text
             layer.color_2 = editColor2.text
@@ -891,9 +894,27 @@ ApplicationWindow {
                     visible: editingLayer.plugin === "builtin.color_spread"
                 }
 
+                Text {
+                    text: "Cutoff time " + editSpreadCutoff.value.toFixed(2) + " seconds"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    visible: editingLayer.plugin === "builtin.color_spread"
+                }
+
+                Slider {
+                    id: editSpreadCutoff
+                    Layout.fillWidth: true
+                    from: 0.1
+                    to: 5
+                    value: 0.8
+                    stepSize: 0.1
+                    visible: editingLayer.plugin === "builtin.color_spread"
+                }
+
                 CheckBox {
                     id: editFinishSpread
-                    text: "Allow each spread to finish and fade"
+                    text: "Allow each spread to finish"
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     visible: editingLayer.plugin === "builtin.color_spread"
@@ -1195,6 +1216,7 @@ ApplicationWindow {
             colorSpreadMaskLayer.currentIndex = maskLayersForVisual(analysisVisualPath).length > 0 ? 0 : -1
             colorSpreadInterval.value = 1.0
             colorSpreadDuration.value = 0.8
+            colorSpreadCutoff.value = 0.8
             colorSpreadFinish.checked = false
             colorSpreadColor1.text = "#00c8ff"
             colorSpreadColor2.text = "#ff4fd8"
@@ -1312,9 +1334,25 @@ ApplicationWindow {
                 stepSize: 0.1
             }
 
+            Text {
+                text: "Cutoff time " + colorSpreadCutoff.value.toFixed(2) + " seconds"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            Slider {
+                id: colorSpreadCutoff
+                Layout.fillWidth: true
+                from: 0.1
+                to: 5
+                value: 0.8
+                stepSize: 0.1
+            }
+
             CheckBox {
                 id: colorSpreadFinish
-                text: "Allow each spread to finish and fade"
+                text: "Allow each spread to finish"
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
             }

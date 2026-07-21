@@ -17,7 +17,9 @@ Dialog {
     readonly property string assetExtension: extensionFromName(videoName.length > 0 ? videoName : videoPath)
     readonly property bool isImage: ["png", "jpg", "jpeg", "webp", "bmp"].indexOf(assetExtension) >= 0
     readonly property bool isVideo: ["mp4", "mov", "mkv", "avi"].indexOf(assetExtension) >= 0
-    readonly property bool canSaveMask: analysisResult.preview_path && !analyzing
+    readonly property string resultExtension: extensionFromName(analysisResult.preview_path || "")
+    readonly property bool resultIsVideo: ["mp4", "mov", "mkv", "avi", "webm"].indexOf(resultExtension) >= 0
+    readonly property bool canSaveMask: !!analysisResult.preview_path && !analyzing
     signal maskLayerCreated(string layerJson)
 
     title: "Visual Analysis"
@@ -136,8 +138,22 @@ Dialog {
         audioOutput: AudioOutput {
             muted: true
         }
-        onPositionChanged: scrubber.value = position
+        onPositionChanged: {
+            scrubber.value = position
+            if (root.resultIsVideo && Math.abs(maskPreviewPlayer.position - position) > 120) {
+                maskPreviewPlayer.position = position
+            }
+        }
         onDurationChanged: scrubber.value = 0
+    }
+
+    MediaPlayer {
+        id: maskPreviewPlayer
+        source: root.resultIsVideo ? analysisResult.preview_url || "" : ""
+        videoOutput: maskPreviewOutput
+        audioOutput: AudioOutput {
+            muted: true
+        }
     }
 
     ColumnLayout {
@@ -313,7 +329,18 @@ Dialog {
                         tooltip: videoPlayer.playbackState === MediaPlayer.PlayingState ? "Pause video preview" : "Play video preview"
                         accented: true
                         enabled: root.canPreview && root.isVideo
-                        onClicked: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+                        onClicked: {
+                            if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
+                                videoPlayer.pause()
+                                maskPreviewPlayer.pause()
+                            } else {
+                                videoPlayer.play()
+                                if (root.resultIsVideo) {
+                                    maskPreviewPlayer.position = videoPlayer.position
+                                    maskPreviewPlayer.play()
+                                }
+                            }
+                        }
                     }
 
                     Slider {
@@ -322,7 +349,12 @@ Dialog {
                         from: 0
                         to: Math.max(1, videoPlayer.duration)
                         enabled: root.canPreview && root.isVideo && videoPlayer.duration > 0
-                        onMoved: videoPlayer.position = value
+                        onMoved: {
+                            videoPlayer.position = value
+                            if (root.resultIsVideo) {
+                                maskPreviewPlayer.position = value
+                            }
+                        }
                     }
 
                     Text {
@@ -398,10 +430,18 @@ Dialog {
                         Image {
                             anchors.fill: parent
                             anchors.margins: 10
-                            source: analysisResult.preview_url || ""
+                            source: !root.resultIsVideo ? analysisResult.preview_url || "" : ""
                             cache: false
                             fillMode: Image.PreserveAspectFit
                             visible: source.toString().length > 0
+                        }
+
+                        VideoOutput {
+                            id: maskPreviewOutput
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            fillMode: VideoOutput.PreserveAspectFit
+                            visible: root.resultIsVideo
                         }
 
                         Text {

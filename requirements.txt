@@ -2,3 +2,5 @@ PySide6>=6.7
 librosa>=0.10
 numpy>=1.26
 opencv-python>=4.9
+imageio>=2.37
+imageio-ffmpeg>=0.6

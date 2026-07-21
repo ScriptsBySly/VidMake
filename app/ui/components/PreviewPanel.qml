@@ -33,12 +33,12 @@ Panel {
     readonly property string compositionVisualExtension: extensionFromName(compositionVisualName.length > 0 ? compositionVisualName : compositionVisualPath)
     readonly property string compositionVideoExtension: extensionFromName(compositionVideoName.length > 0 ? compositionVideoName : compositionVideoPath)
     readonly property bool isAudio: assetKind === "Audio"
-    readonly property bool isVideo: assetKind === "Visual" && ["mp4", "mov", "mkv", "avi"].indexOf(assetExtension) >= 0
-    readonly property bool isImage: assetKind === "Visual" && ["png", "jpg", "jpeg", "webp", "gif"].indexOf(assetExtension) >= 0
+    readonly property bool isVideo: assetKind === "Visual" && isVideoExtension(assetExtension)
+    readonly property bool isImage: assetKind === "Visual" && isImageExtension(assetExtension)
     readonly property bool canPlay: isAudio || isVideo
-    readonly property bool compositionVisualIsVideo: ["mp4", "mov", "mkv", "avi"].indexOf(compositionVisualExtension) >= 0
-    readonly property bool compositionVisualIsImage: ["png", "jpg", "jpeg", "webp", "gif"].indexOf(compositionVisualExtension) >= 0
-    readonly property bool compositionVideoIsVideo: ["mp4", "mov", "mkv", "avi"].indexOf(compositionVideoExtension) >= 0
+    readonly property bool compositionVisualIsVideo: isVideoExtension(compositionVisualExtension)
+    readonly property bool compositionVisualIsImage: isImageExtension(compositionVisualExtension)
+    readonly property bool compositionVideoIsVideo: isVideoExtension(compositionVideoExtension)
     readonly property bool compositionCanPlay: compositionAudioPath.length > 0 || compositionVideoIsVideo
     readonly property bool activeCanPlay: compositionMode ? compositionCanPlay : canPlay
     readonly property int compositionPosition: compositionAudioPath.length > 0 ? compositionAudioPlayer.position : compositionVideoPlayer.position
@@ -75,11 +75,17 @@ Panel {
     readonly property var colorSpreadBursts: colorSpreadBurstModel()
     readonly property real colorSpreadOriginX: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_x || 0.5 : 0.5
     readonly property real colorSpreadOriginY: colorSpreadReady ? activeColorSpreadMaskLayer.mask_center_y || 0.5 : 0.5
-    readonly property real colorSpreadOpacity: colorSpreadReady ? Math.max(0.0, 0.46 * (1.0 - colorSpreadProgress * 0.2)) : 0.0
     readonly property var activeChromaRemoveEffect: chromaRemoveEffectForCurrentVisual()
     readonly property var activeChromaRemoveMaskLayer: maskLayerById(activeChromaRemoveEffect ? activeChromaRemoveEffect.mask_layer_id || "" : "")
-    readonly property bool chromaRemoveReady: activeChromaRemoveEffect !== null && activeChromaRemoveMaskLayer !== null && (activeChromaRemoveMaskLayer.cutout_path || "").length > 0
-    readonly property string chromaRemoveCutoutUrl: chromaRemoveReady ? pathToUrl(activeChromaRemoveMaskLayer.cutout_path) : ""
+    readonly property bool chromaRemoveReady: activeChromaRemoveEffect !== null && activeChromaRemoveMaskLayer !== null && ((activeChromaRemoveMaskLayer.cutout_path || "").length > 0 || (activeChromaRemoveMaskLayer.preview_path || "").length > 0)
+    readonly property string chromaRemoveCutoutPath: chromaRemoveReady ? activeChromaRemoveMaskLayer.cutout_path || "" : ""
+    readonly property string chromaRemoveCutoutUrl: chromaRemoveReady ? pathToUrl(chromaRemoveCutoutPath) : ""
+    readonly property bool chromaRemoveCutoutIsVideo: isVideoPath(chromaRemoveCutoutPath)
+    readonly property bool chromaRemoveCutoutIsImage: isImagePath(chromaRemoveCutoutPath)
+    readonly property string chromaRemoveMaskPath: chromaRemoveReady ? activeChromaRemoveMaskLayer.preview_path || "" : ""
+    readonly property string chromaRemoveMaskUrl: chromaRemoveMaskPath.length > 0 ? pathToUrl(chromaRemoveMaskPath) : ""
+    readonly property bool chromaRemoveMaskIsVideo: isVideoPath(chromaRemoveMaskPath)
+    readonly property bool chromaRemoveMaskIsImage: isImagePath(chromaRemoveMaskPath)
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -87,6 +93,22 @@ Panel {
     function extensionFromName(name) {
         var dot = name.lastIndexOf(".")
         return dot >= 0 ? name.slice(dot + 1).toLowerCase() : ""
+    }
+
+    function isVideoExtension(extension) {
+        return ["mp4", "mov", "mkv", "avi", "webm"].indexOf(extension) >= 0
+    }
+
+    function isImageExtension(extension) {
+        return ["png", "jpg", "jpeg", "webp", "gif", "bmp"].indexOf(extension) >= 0
+    }
+
+    function isVideoPath(path) {
+        return isVideoExtension(extensionFromName(path || ""))
+    }
+
+    function isImagePath(path) {
+        return isImageExtension(extensionFromName(path || ""))
     }
 
     function pathToUrl(path) {
@@ -145,7 +167,12 @@ Panel {
         }
         if (player.playbackState === MediaPlayer.PlayingState) {
             player.pause()
+            chromaRemoveMaskPlayer.pause()
         } else {
+            if (chromaRemoveMaskIsVideo) {
+                chromaRemoveMaskPlayer.position = player.position
+                chromaRemoveMaskPlayer.play()
+            }
             player.play()
         }
     }
@@ -169,8 +196,14 @@ Panel {
             if (compositionVideoIsVideo) {
                 compositionVideoPlayer.position = target
             }
+            if (chromaRemoveMaskIsVideo) {
+                chromaRemoveMaskPlayer.position = target
+            }
         } else {
             player.position = target
+            if (chromaRemoveMaskIsVideo) {
+                chromaRemoveMaskPlayer.position = target
+            }
         }
     }
 
@@ -246,11 +279,11 @@ Panel {
     }
 
     function visualAssetIsVideo(asset) {
-        return ["mp4", "mov", "mkv", "avi"].indexOf(visualAssetExtension(asset)) >= 0
+        return isVideoExtension(visualAssetExtension(asset))
     }
 
     function visualAssetIsImage(asset) {
-        return ["png", "jpg", "jpeg", "webp", "gif"].indexOf(visualAssetExtension(asset)) >= 0
+        return isImageExtension(visualAssetExtension(asset))
     }
 
     function chromaRemoveEffectForPath(path) {
@@ -273,12 +306,32 @@ Panel {
 
     function chromaRemoveReadyForPath(path) {
         var layer = chromaRemoveMaskLayerForPath(path)
-        return layer !== null && (layer.cutout_path || "").length > 0
+        return layer !== null && ((layer.cutout_path || "").length > 0 || (layer.preview_path || "").length > 0)
     }
 
     function chromaRemoveCutoutUrlForPath(path) {
         var layer = chromaRemoveMaskLayerForPath(path)
         return layer !== null && (layer.cutout_path || "").length > 0 ? pathToUrl(layer.cutout_path) : ""
+    }
+
+    function chromaRemoveCutoutIsImageForPath(path) {
+        var layer = chromaRemoveMaskLayerForPath(path)
+        return layer !== null && isImagePath(layer.cutout_path || "")
+    }
+
+    function chromaRemoveCutoutIsVideoForPath(path) {
+        var layer = chromaRemoveMaskLayerForPath(path)
+        return layer !== null && isVideoPath(layer.cutout_path || "")
+    }
+
+    function chromaRemoveMaskUrlForPath(path) {
+        var layer = chromaRemoveMaskLayerForPath(path)
+        return layer !== null && (layer.preview_path || "").length > 0 ? pathToUrl(layer.preview_path) : ""
+    }
+
+    function chromaRemoveMaskIsVideoForPath(path) {
+        var layer = chromaRemoveMaskLayerForPath(path)
+        return layer !== null && isVideoPath(layer.preview_path || "")
     }
 
     function maskBound(name, fallback) {
@@ -341,13 +394,14 @@ Panel {
             return 0.0
         }
         var durationMs = Math.max(50, effect.spread_duration_seconds * 1000.0)
+        var cutoffMs = colorSpreadCutoffMilliseconds(effect)
         if ((effect.trigger_mode || "interval") === "keyframes") {
             var layer = audioKeyframeLayerById(effect.keyframe_layer_id || "")
             if (!layer || !layer.keyframes || layer.keyframes.length === 0) {
                 return 0.0
             }
             var nowSeconds = currentPosition / 1000.0
-            var durationSeconds = durationMs / 1000.0
+            var cutoffSeconds = cutoffMs / 1000.0
             var latestDelta = -1.0
             for (var i = 0; i < layer.keyframes.length; i++) {
                 var timeSeconds = layer.keyframes[i].time_seconds || 0.0
@@ -355,15 +409,15 @@ Panel {
                     break
                 }
                 var delta = nowSeconds - timeSeconds
-                if (delta <= durationSeconds) {
+                if (delta <= cutoffSeconds) {
                     latestDelta = delta
                 }
             }
-            return latestDelta < 0.0 ? 0.0 : Math.max(0.0, Math.min(1.0, latestDelta / durationSeconds))
+            return latestDelta < 0.0 ? 0.0 : Math.max(0.0, Math.min(1.0, latestDelta / (durationMs / 1000.0)))
         }
         var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
         var phase = currentPosition % intervalMs
-        if (phase > durationMs) {
+        if (phase > cutoffMs) {
             return 0.0
         }
         return Math.max(0.0, Math.min(1.0, phase / durationMs))
@@ -405,14 +459,14 @@ Panel {
         return Math.max(2.0, Math.max(frame.width / maskWidth, frame.height / maskHeight) * 1.35)
     }
 
-    function colorSpreadSilhouetteScale(index) {
-        var delayedProgress = Math.max(0.0, Math.min(1.0, colorSpreadProgress - index * 0.045))
-        return 1.0 + (colorSpreadMaxScale() - 1.0) * delayedProgress
+    function colorSpreadSilhouetteScaleForProgress(progress) {
+        return 1.0 + (colorSpreadMaxScale() - 1.0) * Math.max(0.0, Math.min(1.0, progress))
     }
 
-    function colorSpreadSilhouetteScaleForProgress(progress, index) {
-        var delayedProgress = Math.max(0.0, Math.min(1.0, progress - index * 0.045))
-        return 1.0 + (colorSpreadMaxScale() - 1.0) * delayedProgress
+    function colorSpreadCutoffMilliseconds(effect) {
+        var durationSeconds = effect.spread_duration_seconds || 0.8
+        var cutoffSeconds = effect.spread_cutoff_seconds === undefined ? durationSeconds : effect.spread_cutoff_seconds
+        return Math.max(50, cutoffSeconds * 1000.0)
     }
 
     function colorSpreadBurstModel() {
@@ -432,7 +486,9 @@ Panel {
         }
 
         var durationMs = Math.max(50, effect.spread_duration_seconds * 1000.0)
+        var cutoffMs = colorSpreadCutoffMilliseconds(effect)
         var durationSeconds = durationMs / 1000.0
+        var cutoffSeconds = cutoffMs / 1000.0
         var nowSeconds = currentPosition / 1000.0
         var bursts = []
         if ((effect.trigger_mode || "interval") === "keyframes") {
@@ -446,7 +502,7 @@ Panel {
                     break
                 }
                 var delta = nowSeconds - timeSeconds
-                if (delta <= durationSeconds) {
+                if (delta <= cutoffSeconds) {
                     bursts.push({
                         "progress": Math.max(0.0, Math.min(1.0, delta / durationSeconds)),
                         "color": i % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
@@ -458,11 +514,11 @@ Panel {
 
         var intervalMs = Math.max(50, effect.trigger_interval_seconds * 1000.0)
         var currentCycle = Math.floor(currentPosition / intervalMs)
-        var lookbackCycles = Math.ceil(durationMs / intervalMs)
+        var lookbackCycles = Math.ceil(cutoffMs / intervalMs)
         for (var cycle = Math.max(0, currentCycle - lookbackCycles); cycle <= currentCycle; cycle++) {
             var triggerMs = cycle * intervalMs
             var ageMs = currentPosition - triggerMs
-            if (ageMs >= 0 && ageMs <= durationMs) {
+            if (ageMs >= 0 && ageMs <= cutoffMs) {
                 bursts.push({
                     "progress": Math.max(0.0, Math.min(1.0, ageMs / durationMs)),
                     "color": cycle % 2 === 0 ? effect.color_1 || "#00c8ff" : effect.color_2 || "#ff4fd8"
@@ -521,6 +577,7 @@ Panel {
     function stopComposition() {
         compositionAudioPlayer.stop()
         compositionVideoPlayer.stop()
+        chromaRemoveMaskPlayer.stop()
         compositionMode = false
     }
 
@@ -533,10 +590,15 @@ Panel {
         if (isPlaying) {
             compositionAudioPlayer.pause()
             compositionVideoPlayer.pause()
+            chromaRemoveMaskPlayer.pause()
             return
         }
         if (compositionVideoIsVideo) {
             compositionVideoPlayer.play()
+        }
+        if (chromaRemoveMaskIsVideo) {
+            chromaRemoveMaskPlayer.position = root.currentPosition
+            chromaRemoveMaskPlayer.play()
         }
         if (compositionAudioPath.length > 0) {
             compositionAudioPlayer.play()
@@ -555,6 +617,7 @@ Panel {
     onMediaUrlChanged: {
         stopComposition()
         player.stop()
+        chromaRemoveMaskPlayer.stop()
         player.position = 0
     }
 
@@ -573,8 +636,20 @@ Panel {
             if (!root.seeking && !root.compositionMode) {
                 scrubber.value = position
             }
+            if (!root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - position) > 120) {
+                chromaRemoveMaskPlayer.position = position
+            }
         }
         onDurationChanged: scrubber.value = 0
+    }
+
+    MediaPlayer {
+        id: chromaRemoveMaskPlayer
+        source: root.chromaRemoveMaskIsVideo ? root.chromaRemoveMaskUrl : ""
+        videoOutput: chromaRemoveMaskVideoOutput
+        audioOutput: AudioOutput {
+            muted: true
+        }
     }
 
     AudioOutput {
@@ -608,6 +683,9 @@ Panel {
         onPositionChanged: {
             if (!root.seeking && root.compositionMode && root.compositionAudioPath.length === 0) {
                 scrubber.value = position
+            }
+            if (root.compositionMode && root.chromaRemoveMaskIsVideo && Math.abs(chromaRemoveMaskPlayer.position - position) > 120) {
+                chromaRemoveMaskPlayer.position = position
             }
         }
     }
@@ -655,7 +733,7 @@ Panel {
                         id: assetVideoOutput
                         anchors.fill: parent
                         fillMode: VideoOutput.PreserveAspectFit
-                        visible: !root.chromaRemoveReady && !root.compositionMode && root.isVideo
+                        visible: !root.compositionMode && root.isVideo
                     }
 
                     VideoOutput {
@@ -665,7 +743,42 @@ Panel {
                         z: Math.max(0, root.compositionVideoLayerIndex)
                         visible: root.compositionMode
                             && root.compositionVideoIsVideo
-                            && !root.chromaRemoveReadyForPath(root.compositionVideoPath)
+                    }
+
+                    VideoOutput {
+                        id: chromaRemoveMaskVideoOutput
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        fillMode: VideoOutput.PreserveAspectFit
+                        visible: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
+                    }
+
+                    ShaderEffectSource {
+                        id: chromaRemoveSourceTexture
+                        sourceItem: root.compositionMode ? compositionVideoOutput : assetVideoOutput
+                        live: true
+                        recursive: true
+                        hideSource: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
+                        visible: false
+                    }
+
+                    ShaderEffectSource {
+                        id: chromaRemoveMaskTexture
+                        sourceItem: chromaRemoveMaskVideoOutput
+                        live: true
+                        recursive: true
+                        hideSource: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
+                        visible: false
+                    }
+
+                    ShaderEffect {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        z: root.compositionMode ? Math.max(0, root.compositionVideoLayerIndex) : 0
+                        property variant source: chromaRemoveSourceTexture
+                        property variant maskSource: chromaRemoveMaskTexture
+                        fragmentShader: Qt.resolvedUrl("../shaders/luma_mask.frag.qsb")
+                        visible: root.chromaRemoveReady && root.chromaRemoveMaskIsVideo
                     }
 
                     Repeater {
@@ -695,7 +808,9 @@ Panel {
                             anchors.fill: parent
                             anchors.margins: 12
                             z: index
-                            source: root.chromaRemoveCutoutUrlForPath(modelData.path)
+                            source: root.chromaRemoveCutoutIsImageForPath(modelData.path)
+                                ? root.chromaRemoveCutoutUrlForPath(modelData.path)
+                                : ""
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             cache: false
@@ -719,7 +834,7 @@ Panel {
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         cache: false
-                        visible: root.chromaRemoveReady
+                        visible: root.chromaRemoveReady && root.chromaRemoveCutoutIsImage
                     }
 
                     Column {
@@ -770,40 +885,34 @@ Panel {
                             required property var modelData
                             readonly property real burstProgress: modelData.progress || 0.0
                             readonly property string burstColor: modelData.color || root.colorSpreadColor
-                            readonly property real burstOpacity: Math.max(0.0, 0.46 * (1.0 - burstProgress))
                             anchors.fill: parent
 
-                            Repeater {
-                                model: 8
+                            Item {
+                                id: colorSpreadSilhouette
+                                anchors.fill: parent
+                                opacity: 0.72
+                                transform: Scale {
+                                    origin.x: colorSpreadSilhouette.width * root.colorSpreadOriginX
+                                    origin.y: colorSpreadSilhouette.height * root.colorSpreadOriginY
+                                    xScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
+                                    yScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress)
+                                }
 
-                                Item {
-                                    id: colorSpreadSilhouette
-                                    required property int index
+                                Image {
+                                    id: silhouetteMask
                                     anchors.fill: parent
-                                    opacity: colorSpreadBurst.burstOpacity * Math.max(0.0, 0.9 - index * 0.08 - colorSpreadBurst.burstProgress * 0.22)
-                                    transform: Scale {
-                                        origin.x: colorSpreadSilhouette.width * root.colorSpreadOriginX
-                                        origin.y: colorSpreadSilhouette.height * root.colorSpreadOriginY
-                                        xScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress, colorSpreadSilhouette.index)
-                                        yScale: root.colorSpreadSilhouetteScaleForProgress(colorSpreadBurst.burstProgress, colorSpreadSilhouette.index)
-                                    }
+                                    anchors.margins: 12
+                                    source: root.colorSpreadMaskUrl
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                    cache: false
+                                    visible: false
+                                }
 
-                                    Image {
-                                        id: silhouetteMask
-                                        anchors.fill: parent
-                                        anchors.margins: 12
-                                        source: root.colorSpreadMaskUrl
-                                        fillMode: Image.PreserveAspectFit
-                                        asynchronous: true
-                                        cache: false
-                                        visible: false
-                                    }
-
-                                    ColorOverlay {
-                                        anchors.fill: silhouetteMask
-                                        source: silhouetteMask
-                                        color: colorSpreadBurst.burstColor
-                                    }
+                                ColorOverlay {
+                                    anchors.fill: silhouetteMask
+                                    source: silhouetteMask
+                                    color: colorSpreadBurst.burstColor
                                 }
                             }
 
