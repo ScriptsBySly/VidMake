@@ -35,6 +35,59 @@ Panel {
         return { "name": name, "path": path }
     }
 
+    function extensionFromName(name) {
+        var dot = name.lastIndexOf(".")
+        return dot >= 0 ? name.slice(dot + 1).toLowerCase() : ""
+    }
+
+    function kindForFile(fileUrl) {
+        var extension = extensionFromName(fileNameFromUrl(fileUrl))
+        var audioExtensions = ["wav", "mp3", "flac", "aac", "m4a", "ogg"]
+        var visualExtensions = ["png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "mkv", "avi"]
+
+        if (audioExtensions.indexOf(extension) >= 0) {
+            return "Audio"
+        }
+        if (visualExtensions.indexOf(extension) >= 0) {
+            return "Visual"
+        }
+        return ""
+    }
+
+    function importFile(fileUrl) {
+        var kind = kindForFile(fileUrl)
+        if (kind === "Audio") {
+            var audioAsset = root.addAsset("Audio", "\uE8D6", fileUrl)
+            root.audioImported(audioAsset.name, audioAsset.path)
+            return true
+        }
+        if (kind === "Visual") {
+            var visualAsset = root.addAsset("Visual", "\uEB9F", fileUrl)
+            root.visualImported(visualAsset.name, visualAsset.path)
+            return true
+        }
+        return false
+    }
+
+    function hasImportableFiles(urls) {
+        for (var i = 0; i < urls.length; i++) {
+            if (kindForFile(urls[i]).length > 0) {
+                return true
+            }
+        }
+        return false
+    }
+
+    function importFiles(urls) {
+        var imported = 0
+        for (var i = 0; i < urls.length; i++) {
+            if (importFile(urls[i])) {
+                imported += 1
+            }
+        }
+        return imported
+    }
+
     function deleteAsset(index, kind, name, path) {
         assetModel.remove(index)
         if (kind === "Audio") {
@@ -53,8 +106,7 @@ Panel {
             "All files (*)"
         ]
         onAccepted: {
-            var asset = root.addAsset("Audio", "\uE8D6", selectedFile)
-            root.audioImported(asset.name, asset.path)
+            root.importFile(selectedFile)
         }
     }
 
@@ -67,8 +119,7 @@ Panel {
             "All files (*)"
         ]
         onAccepted: {
-            var asset = root.addAsset("Visual", "\uEB9F", selectedFile)
-            root.visualImported(asset.name, asset.path)
+            root.importFile(selectedFile)
         }
     }
 
@@ -100,11 +151,12 @@ Panel {
         }
 
         Rectangle {
+            id: dropZone
             Layout.fillWidth: true
             height: 116
             radius: 8
-            color: Theme.surfaceRaised
-            border.color: Theme.stroke
+            color: mediaDrop.containsDrag ? Theme.dropSurface : Theme.surfaceRaised
+            border.color: mediaDrop.containsDrag ? Theme.accent : Theme.stroke
 
             Column {
                 anchors.centerIn: parent
@@ -112,7 +164,7 @@ Panel {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "\uE8B5"
+                    text: mediaDrop.containsDrag ? "\uE8B5" : "\uE8B5"
                     color: Theme.accent
                     font.family: "Segoe MDL2 Assets"
                     font.pixelSize: 24
@@ -121,7 +173,7 @@ Panel {
                 Text {
                     width: root.width - 64
                     horizontalAlignment: Text.AlignHCenter
-                    text: "Drop media here"
+                    text: mediaDrop.containsDrag ? "Release to import" : "Drop media here"
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 14
@@ -136,6 +188,19 @@ Panel {
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     elide: Text.ElideRight
+                }
+            }
+
+            DropArea {
+                id: mediaDrop
+                anchors.fill: parent
+                onEntered: function(drag) {
+                    drag.accepted = root.hasImportableFiles(drag.urls)
+                }
+                onDropped: function(drop) {
+                    if (root.importFiles(drop.urls) > 0) {
+                        drop.acceptProposedAction()
+                    }
                 }
             }
         }

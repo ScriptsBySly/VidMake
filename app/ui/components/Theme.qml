@@ -11,6 +11,7 @@ QtObject {
     readonly property color surfaceRaised: "#f8f8f8"
     readonly property color surfaceHover: "#f1f6fb"
     readonly property color panelHeader: "#fafafa"
+    readonly property color dropSurface: "#eef7ff"
     readonly property color input: "#ffffff"
     readonly property color tile: "#eef3f7"
     readonly property color timeline: "#fcfcfc"
