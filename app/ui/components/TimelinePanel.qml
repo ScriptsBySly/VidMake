@@ -7,6 +7,49 @@ Panel {
     title: "Timeline"
     property string audioName: ""
     property string visualName: ""
+    property string selectedAssetPath: ""
+    property int playheadPosition: 0
+    property int timelineDuration: 15000
+    property bool playing: false
+    signal assetSelected(string name, string kind, string path)
+    signal seekRequested(int milliseconds)
+    signal playbackToggled()
+
+    function formatTime(milliseconds) {
+        var total = Math.max(0, Math.floor(milliseconds / 1000))
+        var minutes = Math.floor(total / 60)
+        var seconds = total % 60
+        return (minutes < 10 ? "0" + minutes : "" + minutes) + ":"
+            + (seconds < 10 ? "0" + seconds : "" + seconds)
+    }
+
+    function clipColor(kind) {
+        return kind === "Audio" ? "#b45309" : "#2b5361"
+    }
+
+    function clipBorder(kind, selected) {
+        if (selected) {
+            return kind === "Audio" ? "#7c2d12" : Theme.accent
+        }
+        return kind === "Audio" ? Theme.audioStroke : "#6dbad0"
+    }
+
+    function loadAssets(items) {
+        timelineModel.clear()
+        for (var i = 0; i < items.length; i++) {
+            var asset = items[i]
+            timelineModel.append({
+                "name": asset.name,
+                "kind": asset.kind,
+                "path": asset.path,
+                "start": 0
+            })
+        }
+    }
+
+    ListModel {
+        id: timelineModel
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -21,6 +64,13 @@ Panel {
             spacing: 8
 
             PillButton {
+                text: root.playing ? "Pause" : "Play"
+                iconText: root.playing ? "\uE769" : "\uE768"
+                accent: true
+                onClicked: root.playbackToggled()
+            }
+
+            PillButton {
                 text: "Add effect"
                 iconText: "\uE710"
             }
@@ -29,6 +79,13 @@ Panel {
                 Layout.preferredWidth: 150
                 model: ["Fit", "100%", "200%"]
                 font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            Text {
+                text: root.formatTime(root.playheadPosition) + " / " + root.formatTime(root.timelineDuration)
+                color: Theme.subtleText
+                font.family: Theme.monoFamily
                 font.pixelSize: 12
             }
 
@@ -45,6 +102,7 @@ Panel {
         }
 
         Rectangle {
+            id: ruler
             Layout.fillWidth: true
             height: 58
             radius: 8
@@ -53,28 +111,49 @@ Panel {
             clip: true
 
             Repeater {
-                model: 80
+                model: 16
                 Rectangle {
                     required property int index
-                    x: index * parent.width / 80
-                    y: 14 + Math.abs(Math.sin(index * 0.47)) * 18
-                    width: Math.max(2, parent.width / 120)
-                    height: 16 + Math.abs(Math.cos(index * 0.39)) * 24
-                    radius: 2
-                    color: index % 5 === 0 ? Theme.accent : "#6a737f"
-                    opacity: 0.85
+                    x: index * ruler.width / 15
+                    y: 0
+                    width: 1
+                    height: index % 5 === 0 ? ruler.height : 34
+                    color: index % 5 === 0 ? Theme.strokeStrong : Theme.stroke
+
+                    Text {
+                        anchors.top: parent.top
+                        anchors.topMargin: 8
+                        anchors.left: parent.left
+                        anchors.leftMargin: 5
+                        text: index + "s"
+                        visible: index % 5 === 0
+                        color: Theme.subtleText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                    }
                 }
             }
 
             Rectangle {
-                x: parent.width * 0.23
+                x: Math.min(ruler.width - width, Math.max(0, ruler.width * root.playheadPosition / root.timelineDuration))
                 width: 2
-                height: parent.height
+                height: ruler.height
                 color: Theme.accent
+                z: 5
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: false
+                acceptedButtons: Qt.LeftButton
+                onClicked: function(mouse) {
+                    root.seekRequested(Math.round(root.timelineDuration * mouse.x / ruler.width))
+                }
             }
         }
 
         Rectangle {
+            id: timelineBody
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: 8
@@ -82,48 +161,117 @@ Panel {
             border.color: Theme.stroke
             clip: true
 
-            Column {
+            ListView {
+                id: trackList
                 anchors.fill: parent
                 anchors.margins: 1
+                clip: true
+                spacing: 0
+                model: timelineModel
 
-                TimelineRow {
-                    width: parent.width
+                delegate: Rectangle {
+                    required property string name
+                    required property string kind
+                    required property string path
+                    required property int start
+
+                    width: trackList.width
                     height: 44
-                    label: "Visual"
-                    clipColor: "#2b5361"
-                    clipName: root.visualName.length > 0 ? root.visualName : "Media layer"
-                    clipStart: 0.04
-                    clipWidth: 0.82
+                    color: "transparent"
+                    border.color: Theme.stroke
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 112
+                        color: Theme.trackHeader
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: kind
+                            color: Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            width: parent.width - 20
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: false
+                        acceptedButtons: Qt.LeftButton
+                        onClicked: function(mouse) {
+                            if (mouse.x > 112) {
+                                root.seekRequested(Math.round(root.timelineDuration * (mouse.x - 122) / Math.max(1, parent.width - 142)))
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: clip
+                        x: 122 + Math.round((parent.width - 142) * start / root.timelineDuration)
+                        y: 8
+                        width: Math.max(88, parent.width - 142)
+                        height: parent.height - 16
+                        radius: 6
+                        z: 2
+                        color: root.clipColor(kind)
+                        opacity: path === root.selectedAssetPath ? 1.0 : 0.82
+                        border.color: root.clipBorder(kind, path === root.selectedAssetPath)
+                        border.width: path === root.selectedAssetPath ? 2 : 1
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: name
+                            color: "white"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            width: parent.width - 20
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: false
+                            acceptedButtons: Qt.LeftButton
+                            onClicked: root.assetSelected(name, kind, path)
+                        }
+                    }
                 }
 
-                TimelineRow {
-                    width: parent.width
-                    height: 44
-                    label: "Effect"
-                    clipColor: "#496f48"
-                    clipName: "Pulse"
-                    clipStart: 0.15
-                    clipWidth: 0.62
-                }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width - 48
+                    height: 36
+                    radius: 8
+                    color: Theme.surfaceRaised
+                    border.color: Theme.stroke
+                    visible: timelineModel.count === 0
 
-                TimelineRow {
-                    width: parent.width
-                    height: 44
-                    label: "Audio"
-                    clipColor: "#6b4d89"
-                    clipName: root.audioName.length > 0 ? root.audioName : "Song"
-                    clipStart: 0.04
-                    clipWidth: 0.82
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Import assets to populate the timeline"
+                        color: Theme.subtleText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                    }
                 }
             }
 
             Rectangle {
-                x: parent.width * 0.23
+                x: 123 + Math.min(timelineBody.width - 143, Math.max(0, (timelineBody.width - 142) * root.playheadPosition / root.timelineDuration))
                 width: 2
-                height: parent.height
+                height: timelineBody.height
                 color: Theme.accent
                 z: 5
             }
+
         }
     }
 }

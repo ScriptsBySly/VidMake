@@ -12,12 +12,31 @@ Panel {
     property string assetPath: ""
     property int projectWidth: 1080
     property int projectHeight: 1920
+    property string compositionAudioName: ""
+    property string compositionAudioPath: ""
+    property string compositionVisualName: ""
+    property string compositionVisualPath: ""
+    property bool compositionMode: false
     readonly property string mediaUrl: assetPath.length > 0 ? pathToUrl(assetPath) : ""
+    readonly property string compositionAudioUrl: compositionAudioPath.length > 0 ? pathToUrl(compositionAudioPath) : ""
+    readonly property string compositionVisualUrl: compositionVisualPath.length > 0 ? pathToUrl(compositionVisualPath) : ""
     readonly property string assetExtension: extensionFromName(assetName.length > 0 ? assetName : assetPath)
+    readonly property string compositionVisualExtension: extensionFromName(compositionVisualName.length > 0 ? compositionVisualName : compositionVisualPath)
     readonly property bool isAudio: assetKind === "Audio"
     readonly property bool isVideo: assetKind === "Visual" && ["mp4", "mov", "mkv", "avi"].indexOf(assetExtension) >= 0
     readonly property bool isImage: assetKind === "Visual" && ["png", "jpg", "jpeg", "webp", "gif"].indexOf(assetExtension) >= 0
     readonly property bool canPlay: isAudio || isVideo
+    readonly property bool compositionVisualIsVideo: ["mp4", "mov", "mkv", "avi"].indexOf(compositionVisualExtension) >= 0
+    readonly property bool compositionVisualIsImage: ["png", "jpg", "jpeg", "webp", "gif"].indexOf(compositionVisualExtension) >= 0
+    readonly property bool compositionCanPlay: compositionAudioPath.length > 0 || compositionVisualIsVideo
+    readonly property bool activeCanPlay: compositionMode ? compositionCanPlay : canPlay
+    readonly property int compositionPosition: compositionAudioPath.length > 0 ? compositionAudioPlayer.position : compositionVideoPlayer.position
+    readonly property int compositionDuration: Math.max(compositionAudioPlayer.duration, compositionVideoPlayer.duration)
+    readonly property int currentPosition: compositionMode ? compositionPosition : player.position
+    readonly property int currentDuration: compositionMode ? compositionDuration : player.duration
+    readonly property bool isPlaying: compositionMode
+        ? (compositionAudioPlayer.playbackState === MediaPlayer.PlayingState || compositionVideoPlayer.playbackState === MediaPlayer.PlayingState)
+        : player.playbackState === MediaPlayer.PlayingState
     property bool seeking: false
     property real previewVolume: 0.85
     property bool previewMuted: false
@@ -47,7 +66,37 @@ Panel {
         return value < 10 ? "0" + value : "" + value
     }
 
+    function placeholderLabel() {
+        if (compositionMode) {
+            return compositionAudioName.length > 0 ? compositionAudioName : "Timeline playback"
+        }
+        return assetName.length > 0 ? assetName : "Select an asset"
+    }
+
+    function frameCaption() {
+        if (compositionMode) {
+            if (compositionVisualName.length > 0 && compositionAudioName.length > 0) {
+                return compositionVisualName + " + " + compositionAudioName
+            }
+            if (compositionVisualName.length > 0) {
+                return compositionVisualName
+            }
+            return compositionAudioName
+        }
+        if (assetName.length > 0) {
+            return assetName
+        }
+        if (visualName.length > 0) {
+            return visualName
+        }
+        return projectWidth + " x " + projectHeight
+    }
+
     function togglePlayback() {
+        if (compositionMode) {
+            toggleCompositionPlayback()
+            return
+        }
         if (!canPlay) {
             return
         }
@@ -59,13 +108,82 @@ Panel {
     }
 
     function jumpBy(milliseconds) {
-        if (!canPlay) {
+        if (!activeCanPlay) {
             return
         }
-        player.position = Math.max(0, Math.min(player.duration, player.position + milliseconds))
+        seekTo(currentPosition + milliseconds)
+    }
+
+    function seekTo(milliseconds) {
+        if (!activeCanPlay) {
+            return
+        }
+        var target = Math.max(0, Math.min(Math.max(1, currentDuration), milliseconds))
+        if (compositionMode) {
+            if (compositionAudioPath.length > 0) {
+                compositionAudioPlayer.position = target
+            }
+            if (compositionVisualIsVideo) {
+                compositionVideoPlayer.position = target
+            }
+        } else {
+            player.position = target
+        }
+    }
+
+    function loadCompositionAssets(items) {
+        compositionAudioName = ""
+        compositionAudioPath = ""
+        compositionVisualName = ""
+        compositionVisualPath = ""
+        for (var i = 0; i < items.length; i++) {
+            var asset = items[i]
+            if (asset.kind === "Audio") {
+                compositionAudioName = asset.name
+                compositionAudioPath = asset.path
+            } else if (asset.kind === "Visual") {
+                compositionVisualName = asset.name
+                compositionVisualPath = asset.path
+            }
+        }
+    }
+
+    function stopComposition() {
+        compositionAudioPlayer.stop()
+        compositionVideoPlayer.stop()
+        compositionMode = false
+    }
+
+    function toggleCompositionPlayback() {
+        if (!compositionCanPlay) {
+            return
+        }
+        player.stop()
+        compositionMode = true
+        if (isPlaying) {
+            compositionAudioPlayer.pause()
+            compositionVideoPlayer.pause()
+            return
+        }
+        if (compositionVisualIsVideo) {
+            compositionVideoPlayer.play()
+        }
+        if (compositionAudioPath.length > 0) {
+            compositionAudioPlayer.play()
+        }
+    }
+
+    function seekCompositionTo(milliseconds) {
+        if (!compositionCanPlay) {
+            return
+        }
+        player.stop()
+        compositionMode = true
+        seekTo(milliseconds)
     }
 
     onMediaUrlChanged: {
+        stopComposition()
         player.stop()
         player.position = 0
     }
@@ -78,15 +196,50 @@ Panel {
 
     MediaPlayer {
         id: player
-        source: root.canPlay ? root.mediaUrl : ""
+        source: root.canPlay && !root.compositionMode ? root.mediaUrl : ""
         audioOutput: audioOutput
-        videoOutput: videoOutput
+        videoOutput: assetVideoOutput
         onPositionChanged: {
-            if (!root.seeking) {
+            if (!root.seeking && !root.compositionMode) {
                 scrubber.value = position
             }
         }
         onDurationChanged: scrubber.value = 0
+    }
+
+    AudioOutput {
+        id: compositionAudioOutput
+        volume: root.previewVolume
+        muted: root.previewMuted
+    }
+
+    AudioOutput {
+        id: compositionVideoAudioOutput
+        volume: root.previewVolume
+        muted: root.previewMuted || root.compositionAudioPath.length > 0
+    }
+
+    MediaPlayer {
+        id: compositionAudioPlayer
+        source: root.compositionAudioPath.length > 0 ? root.compositionAudioUrl : ""
+        audioOutput: compositionAudioOutput
+        onPositionChanged: {
+            if (!root.seeking && root.compositionMode) {
+                scrubber.value = root.currentPosition
+            }
+        }
+    }
+
+    MediaPlayer {
+        id: compositionVideoPlayer
+        source: root.compositionVisualIsVideo ? root.compositionVisualUrl : ""
+        audioOutput: compositionVideoAudioOutput
+        videoOutput: compositionVideoOutput
+        onPositionChanged: {
+            if (!root.seeking && root.compositionMode && root.compositionAudioPath.length === 0) {
+                scrubber.value = position
+            }
+        }
     }
 
     ColumnLayout {
@@ -116,25 +269,36 @@ Panel {
                 clip: true
 
                 VideoOutput {
-                    id: videoOutput
+                    id: assetVideoOutput
                     anchors.fill: parent
                     fillMode: VideoOutput.PreserveAspectFit
-                    visible: root.isVideo
+                    visible: !root.compositionMode && root.isVideo
+                }
+
+                VideoOutput {
+                    id: compositionVideoOutput
+                    anchors.fill: parent
+                    fillMode: VideoOutput.PreserveAspectFit
+                    visible: root.compositionMode && root.compositionVisualIsVideo
                 }
 
                 Image {
                     anchors.fill: parent
                     anchors.margins: 12
-                    source: root.isImage ? root.mediaUrl : ""
+                    source: root.compositionMode && root.compositionVisualIsImage
+                        ? root.compositionVisualUrl
+                        : !root.compositionMode && root.isImage ? root.mediaUrl : ""
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
-                    visible: root.isImage
+                    visible: source.toString().length > 0
                 }
 
                 Column {
                     anchors.centerIn: parent
                     spacing: 14
-                    visible: !root.isImage && !root.isVideo
+                    visible: root.compositionMode
+                        ? !root.compositionVisualIsImage && !root.compositionVisualIsVideo
+                        : !root.isImage && !root.isVideo
 
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -146,8 +310,8 @@ Panel {
 
                         Text {
                             anchors.centerIn: parent
-                            text: root.isAudio ? "\uE8D6" : "\uEB9F"
-                            color: root.isAudio ? Theme.audioAccent : "#d7f4ff"
+                            text: root.compositionMode || root.isAudio ? "\uE8D6" : "\uEB9F"
+                            color: root.compositionMode || root.isAudio ? Theme.audioAccent : "#d7f4ff"
                             font.family: "Segoe MDL2 Assets"
                             font.pixelSize: 42
                         }
@@ -156,7 +320,7 @@ Panel {
                     Text {
                         width: Math.min(frame.width - 32, 360)
                         horizontalAlignment: Text.AlignHCenter
-                        text: root.assetName.length > 0 ? root.assetName : "Select an asset"
+                        text: root.placeholderLabel()
                         color: "#d9dbe1"
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
@@ -168,9 +332,7 @@ Panel {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 18
-                    text: root.assetName.length > 0
-                        ? root.assetName
-                        : root.visualName.length > 0 ? root.visualName : root.projectWidth + " x " + root.projectHeight
+                    text: root.frameCaption()
                     color: "#a9adb7"
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
@@ -188,22 +350,22 @@ Panel {
             IconButton {
                 iconText: "\uE892"
                 tooltip: "Jump backward"
-                enabled: root.canPlay
+                enabled: root.activeCanPlay
                 onClicked: root.jumpBy(-1000)
             }
 
             IconButton {
-                iconText: player.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
-                tooltip: player.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play"
+                iconText: root.isPlaying ? "\uE769" : "\uE768"
+                tooltip: root.isPlaying ? "Pause" : "Play"
                 accented: true
-                enabled: root.canPlay
+                enabled: root.activeCanPlay
                 onClicked: root.togglePlayback()
             }
 
             IconButton {
                 iconText: "\uE893"
                 tooltip: "Jump forward"
-                enabled: root.canPlay
+                enabled: root.activeCanPlay
                 onClicked: root.jumpBy(1000)
             }
 
@@ -211,23 +373,23 @@ Panel {
                 id: scrubber
                 Layout.fillWidth: true
                 from: 0
-                to: Math.max(1, player.duration)
-                enabled: root.canPlay && player.duration > 0
+                to: Math.max(1, root.currentDuration)
+                enabled: root.activeCanPlay && root.currentDuration > 0
                 onPressedChanged: {
                     root.seeking = pressed
-                    if (!pressed && root.canPlay) {
-                        player.position = value
+                    if (!pressed && root.activeCanPlay) {
+                        root.seekTo(value)
                     }
                 }
                 onMoved: {
-                    if (root.canPlay) {
-                        player.position = value
+                    if (root.activeCanPlay) {
+                        root.seekTo(value)
                     }
                 }
             }
 
             Text {
-                text: root.canPlay ? root.formatTime(player.position) : "00:00.00"
+                text: root.activeCanPlay ? root.formatTime(root.currentPosition) : "00:00.00"
                 color: Theme.subtleText
                 font.family: Theme.monoFamily
                 font.pixelSize: 12
@@ -244,7 +406,7 @@ Panel {
                 iconText: "\uE892"
                 badgeText: "5s"
                 tooltip: "Back 5 seconds"
-                enabled: root.canPlay
+                enabled: root.activeCanPlay
                 onClicked: root.jumpBy(-5000)
             }
 
@@ -257,7 +419,7 @@ Panel {
                 iconText: "\uE893"
                 badgeText: "5s"
                 tooltip: "Forward 5 seconds"
-                enabled: root.canPlay
+                enabled: root.activeCanPlay
                 onClicked: root.jumpBy(5000)
             }
 
@@ -281,7 +443,7 @@ Panel {
             IconButton {
                 iconText: root.previewMuted || root.previewVolume === 0 ? "\uE74F" : "\uE767"
                 tooltip: root.previewMuted ? "Unmute preview" : "Mute preview"
-                enabled: root.canPlay
+                enabled: root.activeCanPlay
                 onClicked: root.previewMuted = !root.previewMuted
             }
 
@@ -290,7 +452,7 @@ Panel {
                 from: 0
                 to: 1
                 value: root.previewVolume
-                enabled: root.canPlay
+                enabled: root.activeCanPlay
                 onMoved: {
                     root.previewVolume = value
                     if (value > 0) {

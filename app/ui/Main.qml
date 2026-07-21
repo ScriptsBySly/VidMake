@@ -15,6 +15,8 @@ ApplicationWindow {
     property string statusMessage: "Ready"
     property int projectWidth: 1080
     property int projectHeight: 1920
+    property int timelinePlayheadPosition: 0
+    property int timelineDuration: 15000
 
     width: 1440
     height: 900
@@ -51,13 +53,24 @@ ApplicationWindow {
 
     function applyProject(data, path) {
         assetPanel.loadAssets(data.assets || [])
+        syncTimelineAssets()
         refreshLatestAssetNames()
         selectedAssetName = ""
         selectedAssetKind = ""
         selectedAssetPath = ""
+        timelinePlayheadPosition = 0
+        timelineDuration = 15000
         projectWidth = data.settings && data.settings.width ? data.settings.width : 1080
         projectHeight = data.settings && data.settings.height ? data.settings.height : 1920
         projectPath = path || ""
+    }
+
+    function syncTimelineAssets() {
+        if (timelinePanel) {
+            var assets = assetPanel.assets()
+            timelinePanel.loadAssets(assets)
+            previewPanel.loadCompositionAssets(assets)
+        }
     }
 
     function newProject() {
@@ -164,6 +177,28 @@ ApplicationWindow {
         }
     }
 
+    Timer {
+        interval: 125
+        repeat: true
+        running: previewPanel && previewPanel.isPlaying
+        onTriggered: {
+            window.timelinePlayheadPosition = previewPanel.currentPosition
+            window.timelineDuration = Math.max(15000, previewPanel.currentDuration)
+        }
+    }
+
+    Connections {
+        target: previewPanel
+        function onCurrentDurationChanged() {
+            window.timelineDuration = Math.max(15000, previewPanel.currentDuration)
+        }
+        function onCurrentPositionChanged() {
+            if (!previewPanel.isPlaying) {
+                window.timelinePlayheadPosition = previewPanel.currentPosition
+            }
+        }
+    }
+
     FontLoader {
         id: segoe
         source: ""
@@ -267,24 +302,29 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 onAudioImported: function(name, path) {
                     window.audioAssetName = name
+                    window.syncTimelineAssets()
                 }
                 onVisualImported: function(name, path) {
                     window.visualAssetName = name
+                    window.syncTimelineAssets()
                 }
                 onAssetSelected: function(name, kind, path) {
                     window.selectedAssetName = name
                     window.selectedAssetKind = kind
                     window.selectedAssetPath = path
+                    window.timelinePlayheadPosition = 0
                 }
                 onAudioDeleted: function(name, path) {
                     if (window.audioAssetName === name) {
                         window.audioAssetName = assetPanel.latestAssetName("Audio")
                     }
+                    window.syncTimelineAssets()
                 }
                 onVisualDeleted: function(name, path) {
                     if (window.visualAssetName === name) {
                         window.visualAssetName = assetPanel.latestAssetName("Visual")
                     }
+                    window.syncTimelineAssets()
                 }
             }
 
@@ -307,6 +347,7 @@ ApplicationWindow {
                 }
 
                 PreviewPanel {
+                    id: previewPanel
                     visualName: window.visualAssetName
                     assetName: window.selectedAssetName
                     assetKind: window.selectedAssetKind
@@ -320,8 +361,25 @@ ApplicationWindow {
                 }
 
                 TimelinePanel {
+                    id: timelinePanel
+                    selectedAssetPath: window.selectedAssetPath
+                    playheadPosition: window.timelinePlayheadPosition
+                    timelineDuration: window.timelineDuration
+                    playing: previewPanel.isPlaying
                     audioName: window.audioAssetName
                     visualName: window.visualAssetName
+                    onAssetSelected: function(name, kind, path) {
+                        window.selectedAssetName = name
+                        window.selectedAssetKind = kind
+                        window.selectedAssetPath = path
+                        window.timelinePlayheadPosition = 0
+                    }
+                    onSeekRequested: function(milliseconds) {
+                        previewPanel.seekCompositionTo(milliseconds)
+                        window.timelinePlayheadPosition = milliseconds
+                        window.timelineDuration = Math.max(15000, previewPanel.currentDuration)
+                    }
+                    onPlaybackToggled: previewPanel.toggleCompositionPlayback()
                     SplitView.fillWidth: true
                     SplitView.minimumHeight: 210
                     SplitView.preferredHeight: 290
