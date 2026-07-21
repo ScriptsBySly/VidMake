@@ -107,6 +107,16 @@ Panel {
         }
     }
 
+    function deleteAssetByPath(path) {
+        var index = assetIndexForPath(path)
+        if (index < 0) {
+            return false
+        }
+        var asset = assetModel.get(index)
+        deleteAsset(index, asset.kind, asset.name, asset.path)
+        return true
+    }
+
     function iconForKind(kind) {
         return kind === "Audio" ? "\uE8D6" : "\uEB9F"
     }
@@ -118,6 +128,35 @@ Panel {
             items.push({ "name": asset.name, "kind": asset.kind, "path": asset.path })
         }
         return items
+    }
+
+    function assetIndexForPath(path) {
+        for (var i = 0; i < assetModel.count; i++) {
+            if (assetModel.get(i).path === path) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    function moveAssetByPath(path, direction) {
+        var fromIndex = assetIndexForPath(path)
+        if (fromIndex < 0) {
+            return false
+        }
+        var toIndex = Math.max(0, Math.min(assetModel.count - 1, fromIndex + direction))
+        if (fromIndex === toIndex) {
+            return false
+        }
+        assetModel.move(fromIndex, toIndex, 1)
+        if (selectedIndex === fromIndex) {
+            selectedIndex = toIndex
+        } else if (direction < 0 && selectedIndex === toIndex) {
+            selectedIndex += 1
+        } else if (direction > 0 && selectedIndex === toIndex) {
+            selectedIndex -= 1
+        }
+        return true
     }
 
     function loadAssets(items) {

@@ -95,6 +95,106 @@ ApplicationWindow {
         }
     }
 
+    function moveAssetLayer(path, direction) {
+        if (!assetPanel.moveAssetByPath(path, direction)) {
+            return
+        }
+        refreshLatestAssetNames()
+        syncTimelineAssets()
+        statusMessage = direction < 0 ? "Layer moved up" : "Layer moved down"
+    }
+
+    function hasId(items, id) {
+        if (id.length === 0) {
+            return false
+        }
+        for (var i = 0; i < items.length; i++) {
+            if ((items[i].id || "") === id) {
+                return true
+            }
+        }
+        return false
+    }
+
+    function pruneEffectsForRemovedLayerIds(removedMaskIds, removedKeyframeIds) {
+        if (removedMaskIds.length === 0 && removedKeyframeIds.length === 0) {
+            return 0
+        }
+        var kept = []
+        var removed = 0
+        for (var i = 0; i < effectLayers.length; i++) {
+            var effect = effectLayers[i]
+            var maskId = effect.mask_layer_id || ""
+            var keyframeId = effect.keyframe_layer_id || ""
+            if (hasId(removedMaskIds, maskId) || hasId(removedKeyframeIds, keyframeId)) {
+                removed += 1
+            } else {
+                kept.push(effect)
+            }
+        }
+        effectLayers = kept
+        return removed
+    }
+
+    function cleanupLayersForDeletedAsset(kind, path) {
+        var removedMaskIds = []
+        var removedKeyframeIds = []
+        var removedMasks = 0
+        var removedKeyframes = 0
+        var removedEffects = 0
+
+        if (kind === "Audio") {
+            var keptKeyframes = []
+            for (var audioIndex = 0; audioIndex < audioKeyframeLayers.length; audioIndex++) {
+                var keyframeLayer = audioKeyframeLayers[audioIndex]
+                if ((keyframeLayer.source_audio_path || "") === path) {
+                    removedKeyframeIds.push({ "id": keyframeLayer.id || "" })
+                    removedKeyframes += 1
+                } else {
+                    keptKeyframes.push(keyframeLayer)
+                }
+            }
+            audioKeyframeLayers = keptKeyframes
+        } else if (kind === "Visual") {
+            var keptMasks = []
+            for (var maskIndex = 0; maskIndex < maskLayers.length; maskIndex++) {
+                var maskLayer = maskLayers[maskIndex]
+                if ((maskLayer.source_video_path || "") === path) {
+                    removedMaskIds.push({ "id": maskLayer.id || "" })
+                    removedMasks += 1
+                } else {
+                    keptMasks.push(maskLayer)
+                }
+            }
+            maskLayers = keptMasks
+
+            var keptEffects = []
+            for (var effectIndex = 0; effectIndex < effectLayers.length; effectIndex++) {
+                var effectLayer = effectLayers[effectIndex]
+                if ((effectLayer.source_visual_path || "") === path) {
+                    removedEffects += 1
+                } else {
+                    keptEffects.push(effectLayer)
+                }
+            }
+            effectLayers = keptEffects
+        }
+
+        removedEffects += pruneEffectsForRemovedLayerIds(removedMaskIds, removedKeyframeIds)
+        return {
+            "masks": removedMasks,
+            "keyframes": removedKeyframes,
+            "effects": removedEffects
+        }
+    }
+
+    function deleteAssetFromTimeline(name, kind, path) {
+        if (!assetPanel.deleteAssetByPath(path)) {
+            statusMessage = "Asset not found"
+            return
+        }
+    }
+
     function audioKeyframeLayerIndex(layerId) {
         if (layerId.length === 0) {
             return audioKeyframeLayers.length > 0 ? 0 : -1
@@ -325,8 +425,17 @@ ApplicationWindow {
         } else {
             effectLayers = updated
         }
+        var dependentEffects = 0
+        if (kind === "Keyframes") {
+            dependentEffects = pruneEffectsForRemovedLayerIds([], [{ "id": id }])
+        } else if (kind === "Mask") {
+            dependentEffects = pruneEffectsForRemovedLayerIds([{ "id": id }], [])
+        }
         syncTimelineAssets()
         statusMessage = deletedName.length > 0 ? "Deleted " + deletedName : "Layer deleted"
+        if (dependentEffects > 0) {
+            statusMessage += " (" + dependentEffects + " dependent effect" + (dependentEffects === 1 ? "" : "s") + " removed)"
+        }
     }
 
     function openGeneratedLayerEditor(kind, id) {
@@ -1438,20 +1547,42 @@ ApplicationWindow {
                     window.timelinePlayheadPosition = 0
                 }
                 onAudioDeleted: function(name, path) {
+                    var removed = window.cleanupLayersForDeletedAsset("Audio", path)
                     if (window.audioAssetName === name) {
                         window.audioAssetName = assetPanel.latestAssetName("Audio")
                         window.audioAssetPath = assetPanel.latestAssetPath("Audio")
                     }
+                    if (window.selectedAssetPath === path) {
+                        window.selectedAssetName = ""
+                        window.selectedAssetKind = ""
+                        window.selectedAssetPath = ""
+                    }
                     window.syncTimelineAssets()
+                    window.statusMessage = "Deleted " + name
+                        + " (" + removed.keyframes + " keyframe layer"
+                        + (removed.keyframes === 1 ? "" : "s")
+                        + ", " + removed.effects + " effect"
+                        + (removed.effects === 1 ? "" : "s") + " removed)"
                 }
                 onVisualDeleted: function(name, path) {
+                    var removed = window.cleanupLayersForDeletedAsset("Visual", path)
                     if (window.visualAssetName === name) {
                         window.visualAssetName = assetPanel.latestAssetName("Visual")
+                    }
+                    if (window.selectedAssetPath === path) {
+                        window.selectedAssetName = ""
+                        window.selectedAssetKind = ""
+                        window.selectedAssetPath = ""
                     }
                     var visualAsset = assetPanel.latestVisualAsset()
                     window.analysisVisualName = visualAsset.name
                     window.analysisVisualPath = visualAsset.path
                     window.syncTimelineAssets()
+                    window.statusMessage = "Deleted " + name
+                        + " (" + removed.masks + " mask layer"
+                        + (removed.masks === 1 ? "" : "s")
+                        + ", " + removed.effects + " effect"
+                        + (removed.effects === 1 ? "" : "s") + " removed)"
                 }
             }
 
@@ -1518,6 +1649,12 @@ ApplicationWindow {
                         window.deleteGeneratedLayer(kind, id)
                     }
                     onEffectAddRequested: effectPickerDialog.open()
+                    onAssetMoveRequested: function(path, direction) {
+                        window.moveAssetLayer(path, direction)
+                    }
+                    onAssetDeleteRequested: function(name, kind, path) {
+                        window.deleteAssetFromTimeline(name, kind, path)
+                    }
                     SplitView.fillWidth: true
                     SplitView.minimumHeight: 210
                     SplitView.preferredHeight: 290

@@ -17,6 +17,10 @@ Panel {
     property string compositionAudioPath: ""
     property string compositionVisualName: ""
     property string compositionVisualPath: ""
+    property string compositionVideoName: ""
+    property string compositionVideoPath: ""
+    property int compositionVideoLayerIndex: -1
+    property var compositionVisualAssets: []
     property var compositionEffectLayers: []
     property var audioKeyframeLayers: []
     property var compositionMaskLayers: []
@@ -24,15 +28,18 @@ Panel {
     readonly property string mediaUrl: assetPath.length > 0 ? pathToUrl(assetPath) : ""
     readonly property string compositionAudioUrl: compositionAudioPath.length > 0 ? pathToUrl(compositionAudioPath) : ""
     readonly property string compositionVisualUrl: compositionVisualPath.length > 0 ? pathToUrl(compositionVisualPath) : ""
+    readonly property string compositionVideoUrl: compositionVideoPath.length > 0 ? pathToUrl(compositionVideoPath) : ""
     readonly property string assetExtension: extensionFromName(assetName.length > 0 ? assetName : assetPath)
     readonly property string compositionVisualExtension: extensionFromName(compositionVisualName.length > 0 ? compositionVisualName : compositionVisualPath)
+    readonly property string compositionVideoExtension: extensionFromName(compositionVideoName.length > 0 ? compositionVideoName : compositionVideoPath)
     readonly property bool isAudio: assetKind === "Audio"
     readonly property bool isVideo: assetKind === "Visual" && ["mp4", "mov", "mkv", "avi"].indexOf(assetExtension) >= 0
     readonly property bool isImage: assetKind === "Visual" && ["png", "jpg", "jpeg", "webp", "gif"].indexOf(assetExtension) >= 0
     readonly property bool canPlay: isAudio || isVideo
     readonly property bool compositionVisualIsVideo: ["mp4", "mov", "mkv", "avi"].indexOf(compositionVisualExtension) >= 0
     readonly property bool compositionVisualIsImage: ["png", "jpg", "jpeg", "webp", "gif"].indexOf(compositionVisualExtension) >= 0
-    readonly property bool compositionCanPlay: compositionAudioPath.length > 0 || compositionVisualIsVideo
+    readonly property bool compositionVideoIsVideo: ["mp4", "mov", "mkv", "avi"].indexOf(compositionVideoExtension) >= 0
+    readonly property bool compositionCanPlay: compositionAudioPath.length > 0 || compositionVideoIsVideo
     readonly property bool activeCanPlay: compositionMode ? compositionCanPlay : canPlay
     readonly property int compositionPosition: compositionAudioPath.length > 0 ? compositionAudioPlayer.position : compositionVideoPlayer.position
     readonly property int compositionDuration: Math.max(compositionAudioPlayer.duration, compositionVideoPlayer.duration)
@@ -158,7 +165,7 @@ Panel {
             if (compositionAudioPath.length > 0) {
                 compositionAudioPlayer.position = target
             }
-            if (compositionVisualIsVideo) {
+            if (compositionVideoIsVideo) {
                 compositionVideoPlayer.position = target
             }
         } else {
@@ -171,16 +178,27 @@ Panel {
         compositionAudioPath = ""
         compositionVisualName = ""
         compositionVisualPath = ""
+        compositionVideoName = ""
+        compositionVideoPath = ""
+        compositionVideoLayerIndex = -1
+        var visualAssets = []
         for (var i = 0; i < items.length; i++) {
             var asset = items[i]
             if (asset.kind === "Audio") {
                 compositionAudioName = asset.name
                 compositionAudioPath = asset.path
             } else if (asset.kind === "Visual") {
+                visualAssets.push({ "name": asset.name, "kind": asset.kind, "path": asset.path })
                 compositionVisualName = asset.name
                 compositionVisualPath = asset.path
+                if (visualAssetIsVideo(asset)) {
+                    compositionVideoName = asset.name
+                    compositionVideoPath = asset.path
+                    compositionVideoLayerIndex = visualAssets.length - 1
+                }
             }
         }
+        compositionVisualAssets = visualAssets
     }
 
     function loadCompositionEffects(items) {
@@ -217,6 +235,49 @@ Panel {
             }
         }
         return null
+    }
+
+    function visualAssetExtension(asset) {
+        if (!asset) {
+            return ""
+        }
+        return extensionFromName(asset.name && asset.name.length > 0 ? asset.name : asset.path || "")
+    }
+
+    function visualAssetIsVideo(asset) {
+        return ["mp4", "mov", "mkv", "avi"].indexOf(visualAssetExtension(asset)) >= 0
+    }
+
+    function visualAssetIsImage(asset) {
+        return ["png", "jpg", "jpeg", "webp", "gif"].indexOf(visualAssetExtension(asset)) >= 0
+    }
+
+    function chromaRemoveEffectForPath(path) {
+        if (!path || path.length === 0) {
+            return null
+        }
+        for (var i = compositionEffectLayers.length - 1; i >= 0; i--) {
+            var effect = compositionEffectLayers[i]
+            if (effect.plugin === "builtin.chroma_key_remove" && effect.source_visual_path === path) {
+                return effect
+            }
+        }
+        return null
+    }
+
+    function chromaRemoveMaskLayerForPath(path) {
+        var effect = chromaRemoveEffectForPath(path)
+        return effect ? maskLayerById(effect.mask_layer_id || "") : null
+    }
+
+    function chromaRemoveReadyForPath(path) {
+        var layer = chromaRemoveMaskLayerForPath(path)
+        return layer !== null && (layer.cutout_path || "").length > 0
+    }
+
+    function chromaRemoveCutoutUrlForPath(path) {
+        var layer = chromaRemoveMaskLayerForPath(path)
+        return layer !== null && (layer.cutout_path || "").length > 0 ? pathToUrl(layer.cutout_path) : ""
     }
 
     function maskBound(name, fallback) {
@@ -270,16 +331,7 @@ Panel {
 
     function chromaRemoveEffectForCurrentVisual() {
         var targetPath = compositionMode ? compositionVisualPath : assetKind === "Visual" ? assetPath : ""
-        if (targetPath.length === 0) {
-            return null
-        }
-        for (var i = compositionEffectLayers.length - 1; i >= 0; i--) {
-            var effect = compositionEffectLayers[i]
-            if (effect.plugin === "builtin.chroma_key_remove" && effect.source_visual_path === targetPath) {
-                return effect
-            }
-        }
-        return null
+        return chromaRemoveEffectForPath(targetPath)
     }
 
     function colorSpreadProgressValue() {
@@ -385,7 +437,7 @@ Panel {
             compositionVideoPlayer.pause()
             return
         }
-        if (compositionVisualIsVideo) {
+        if (compositionVideoIsVideo) {
             compositionVideoPlayer.play()
         }
         if (compositionAudioPath.length > 0) {
@@ -452,7 +504,7 @@ Panel {
 
     MediaPlayer {
         id: compositionVideoPlayer
-        source: root.compositionVisualIsVideo ? root.compositionVisualUrl : ""
+        source: root.compositionVideoIsVideo ? root.compositionVideoUrl : ""
         audioOutput: compositionVideoAudioOutput
         videoOutput: compositionVideoOutput
         onPositionChanged: {
@@ -512,15 +564,51 @@ Panel {
                         id: compositionVideoOutput
                         anchors.fill: parent
                         fillMode: VideoOutput.PreserveAspectFit
-                        visible: !root.chromaRemoveReady && root.compositionMode && root.compositionVisualIsVideo
+                        z: Math.max(0, root.compositionVideoLayerIndex)
+                        visible: root.compositionMode
+                            && root.compositionVideoIsVideo
+                            && !root.chromaRemoveReadyForPath(root.compositionVideoPath)
+                    }
+
+                    Repeater {
+                        model: root.compositionMode ? root.compositionVisualAssets : []
+
+                        Image {
+                            required property var modelData
+                            required property int index
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            z: index
+                            source: root.visualAssetIsImage(modelData) && !root.chromaRemoveReadyForPath(modelData.path)
+                                ? root.pathToUrl(modelData.path)
+                                : ""
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            visible: source.toString().length > 0
+                        }
+                    }
+
+                    Repeater {
+                        model: root.compositionMode ? root.compositionVisualAssets : []
+
+                        Image {
+                            required property var modelData
+                            required property int index
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            z: index
+                            source: root.chromaRemoveCutoutUrlForPath(modelData.path)
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            cache: false
+                            visible: source.toString().length > 0
+                        }
                     }
 
                     Image {
                         anchors.fill: parent
                         anchors.margins: 12
-                        source: root.compositionMode && root.compositionVisualIsImage
-                            ? root.compositionVisualUrl
-                            : !root.compositionMode && root.isImage ? root.mediaUrl : ""
+                        source: !root.compositionMode && root.isImage ? root.mediaUrl : ""
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         visible: !root.chromaRemoveReady && source.toString().length > 0
@@ -540,7 +628,7 @@ Panel {
                         anchors.centerIn: parent
                         spacing: 14
                         visible: root.compositionMode
-                            ? !root.compositionVisualIsImage && !root.compositionVisualIsVideo
+                            ? root.compositionVisualAssets.length === 0
                             : !root.isImage && !root.isVideo
 
                         Rectangle {

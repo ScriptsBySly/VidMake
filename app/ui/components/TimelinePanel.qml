@@ -17,6 +17,8 @@ Panel {
     signal generatedLayerEditRequested(string kind, string id)
     signal generatedLayerDeleteRequested(string kind, string id)
     signal effectAddRequested()
+    signal assetMoveRequested(string path, int direction)
+    signal assetDeleteRequested(string name, string kind, string path)
     property var cachedAssets: []
     property var cachedKeyframeLayers: []
     property var cachedMaskLayers: []
@@ -416,6 +418,33 @@ Panel {
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
+                            }
+
+                            IconButton {
+                                visible: selectable
+                                iconText: "\uE70E"
+                                tooltip: "Move layer up"
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 24
+                                onClicked: root.assetMoveRequested(path, -1)
+                            }
+
+                            IconButton {
+                                visible: selectable
+                                iconText: "\uE70D"
+                                tooltip: "Move layer down"
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 24
+                                onClicked: root.assetMoveRequested(path, 1)
+                            }
+
+                            IconButton {
+                                visible: selectable
+                                iconText: "\uE74D"
+                                tooltip: "Delete asset"
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 24
+                                onClicked: root.assetDeleteRequested(name, kind, path)
                             }
 
                             IconButton {
