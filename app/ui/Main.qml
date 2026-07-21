@@ -17,6 +17,7 @@ ApplicationWindow {
     property int projectHeight: 1920
     property int timelinePlayheadPosition: 0
     property int timelineDuration: 15000
+    property string audioAssetPath: ""
 
     width: 1440
     height: 900
@@ -36,6 +37,7 @@ ApplicationWindow {
         var visual = assetPanel.latestAssetName("Visual")
         window.audioAssetName = audio
         window.visualAssetName = visual
+        window.audioAssetPath = assetPanel.latestAssetPath("Audio")
     }
 
     function projectData() {
@@ -167,6 +169,15 @@ ApplicationWindow {
         }
     }
 
+    AnalysisDialog {
+        id: analysisDialog
+        audioName: window.audioAssetName
+        audioPath: window.audioAssetPath
+        projectFrameRate: 30
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+    }
+
     Connections {
         target: projectController
         function onStatusChanged(message) {
@@ -264,6 +275,14 @@ ApplicationWindow {
                 onClicked: settingsDialog.open()
             }
 
+            ToolButton {
+                text: "\uE9D9"
+                font.family: "Segoe MDL2 Assets"
+                ToolTip.visible: hovered
+                ToolTip.text: "Analyze audio"
+                onClicked: analysisDialog.open()
+            }
+
             Text {
                 text: statusMessage
                 color: Theme.subtleText
@@ -302,6 +321,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 onAudioImported: function(name, path) {
                     window.audioAssetName = name
+                    window.audioAssetPath = path
                     window.syncTimelineAssets()
                 }
                 onVisualImported: function(name, path) {
@@ -317,6 +337,7 @@ ApplicationWindow {
                 onAudioDeleted: function(name, path) {
                     if (window.audioAssetName === name) {
                         window.audioAssetName = assetPanel.latestAssetName("Audio")
+                        window.audioAssetPath = assetPanel.latestAssetPath("Audio")
                     }
                     window.syncTimelineAssets()
                 }

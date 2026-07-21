@@ -149,6 +149,16 @@ Panel {
         return ""
     }
 
+    function latestAssetPath(kind) {
+        for (var i = assetModel.count - 1; i >= 0; i--) {
+            var asset = assetModel.get(i)
+            if (asset.kind === kind) {
+                return asset.path
+            }
+        }
+        return ""
+    }
+
     FileDialog {
         id: audioDialog
         title: "Import audio"
