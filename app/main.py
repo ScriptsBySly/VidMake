@@ -31,7 +31,8 @@ def main() -> int:
     engine = QQmlApplicationEngine()
     project_controller = ProjectController()
     audio_analysis_controller = AudioAnalysisController()
-    video_analysis_controller = VideoAnalysisController(Path.cwd() / ".vidmake-cache" / "masks")
+    project_root = Path(__file__).resolve().parent.parent
+    video_analysis_controller = VideoAnalysisController(project_root / ".vidmake-cache" / "masks")
     engine.rootContext().setContextProperty("projectController", project_controller)
     engine.rootContext().setContextProperty("audioAnalysisController", audio_analysis_controller)
     engine.rootContext().setContextProperty("videoAnalysisController", video_analysis_controller)

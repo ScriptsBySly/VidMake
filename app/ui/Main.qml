@@ -22,6 +22,9 @@ ApplicationWindow {
     property string analysisVisualName: ""
     property string analysisVisualPath: ""
     property var maskLayers: []
+    property string editingLayerKind: ""
+    property string editingLayerId: ""
+    property var editingLayer: ({})
 
     width: 1440
     height: 900
@@ -81,9 +84,7 @@ ApplicationWindow {
     function syncTimelineAssets() {
         if (timelinePanel) {
             var assets = assetPanel.assets()
-            timelinePanel.loadAssets(assets)
-            timelinePanel.loadKeyframeLayers(audioKeyframeLayers)
-            timelinePanel.loadMaskLayers(maskLayers)
+            timelinePanel.loadTimelineData(assets, audioKeyframeLayers, maskLayers)
             previewPanel.loadCompositionAssets(assets)
         }
     }
@@ -104,6 +105,102 @@ ApplicationWindow {
         maskLayers = layers
         syncTimelineAssets()
         statusMessage = "Created " + layer.name
+    }
+
+    function findGeneratedLayer(kind, id) {
+        var source = kind === "Keyframes" ? audioKeyframeLayers : maskLayers
+        for (var i = 0; i < source.length; i++) {
+            if (source[i].id === id) {
+                return source[i]
+            }
+        }
+        return null
+    }
+
+    function updateGeneratedLayer(kind, updatedLayer) {
+        var source = kind === "Keyframes" ? audioKeyframeLayers : maskLayers
+        var updated = []
+        for (var i = 0; i < source.length; i++) {
+            updated.push(source[i].id === updatedLayer.id ? updatedLayer : source[i])
+        }
+        if (kind === "Keyframes") {
+            audioKeyframeLayers = updated
+        } else {
+            maskLayers = updated
+        }
+        syncTimelineAssets()
+        statusMessage = "Updated " + updatedLayer.name
+    }
+
+    function deleteGeneratedLayer(kind, id) {
+        var source = kind === "Keyframes" ? audioKeyframeLayers : maskLayers
+        var updated = []
+        var deletedName = ""
+        for (var i = 0; i < source.length; i++) {
+            if (source[i].id === id) {
+                deletedName = source[i].name
+            } else {
+                updated.push(source[i])
+            }
+        }
+        if (kind === "Keyframes") {
+            audioKeyframeLayers = updated
+        } else {
+            maskLayers = updated
+        }
+        syncTimelineAssets()
+        statusMessage = deletedName.length > 0 ? "Deleted " + deletedName : "Layer deleted"
+    }
+
+    function openGeneratedLayerEditor(kind, id) {
+        var layer = findGeneratedLayer(kind, id)
+        if (!layer) {
+            statusMessage = "Layer not found"
+            return
+        }
+        editingLayerKind = kind
+        editingLayerId = id
+        editingLayer = JSON.parse(JSON.stringify(layer))
+        editLayerName.text = layer.name || ""
+        if (kind === "Keyframes") {
+            editBandName.text = layer.band_name || ""
+            editLowHz.value = Math.round(layer.low_hz || 0)
+            editHighHz.value = Math.round(layer.high_hz || 0)
+        } else {
+            editKeyColor.text = layer.key_color || "#00ff00"
+            editTolerance.value = layer.tolerance || 0.28
+            editInverted.checked = !!layer.inverted
+        }
+        generatedLayerDialog.open()
+    }
+
+    function saveGeneratedLayerEdits() {
+        var layer = JSON.parse(JSON.stringify(editingLayer))
+        layer.name = editLayerName.text
+        if (editingLayerKind === "Keyframes") {
+            layer.band_name = editBandName.text
+            layer.low_hz = editLowHz.value
+            layer.high_hz = editHighHz.value
+        } else {
+            if (!/^#[0-9a-fA-F]{6}$/.test(editKeyColor.text)) {
+                statusMessage = "Mask key color must use #rrggbb"
+                return
+            }
+            layer.key_color = editKeyColor.text
+            layer.tolerance = editTolerance.value
+            layer.inverted = editInverted.checked
+        }
+        updateGeneratedLayer(editingLayerKind, layer)
+    }
+
+    function openAudioAnalysis() {
+        audioAnalysisLoader.active = true
+        audioAnalysisLoader.item.open()
+    }
+
+    function openVideoAnalysis() {
+        videoAnalysisLoader.active = true
+        videoAnalysisLoader.item.open()
     }
 
     function newProject() {
@@ -200,26 +297,158 @@ ApplicationWindow {
         }
     }
 
-    AnalysisDialog {
-        id: analysisDialog
-        audioName: window.audioAssetName
-        audioPath: window.audioAssetPath
-        projectFrameRate: 30
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-        onKeyframeLayerCreated: function(layerJson) {
-            window.addAudioKeyframeLayer(layerJson)
+    Loader {
+        id: audioAnalysisLoader
+        active: false
+        sourceComponent: AnalysisDialog {
+            audioName: window.audioAssetName
+            audioPath: window.audioAssetPath
+            projectFrameRate: 30
+            x: Math.round((window.width - width) / 2)
+            y: Math.round((window.height - height) / 2)
+            onKeyframeLayerCreated: function(layerJson) {
+                window.addAudioKeyframeLayer(layerJson)
+            }
+            onClosed: audioAnalysisLoader.active = false
         }
     }
 
-    VideoAnalysisDialog {
-        id: videoAnalysisDialog
-        videoName: window.analysisVisualName
-        videoPath: window.analysisVisualPath
+    Dialog {
+        id: generatedLayerDialog
+        title: editingLayerKind === "Keyframes" ? "Edit Keyframe Layer" : "Edit Mask Layer"
+        modal: true
+        standardButtons: Dialog.Save | Dialog.Cancel
+        width: 430
         x: Math.round((window.width - width) / 2)
         y: Math.round((window.height - height) / 2)
-        onMaskLayerCreated: function(layerJson) {
-            window.addMaskLayer(layerJson)
+        onAccepted: window.saveGeneratedLayerEdits()
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Text {
+                text: "Name"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+
+            TextField {
+                id: editLayerName
+                Layout.fillWidth: true
+                color: Theme.text
+                font.family: Theme.fontFamily
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                visible: editingLayerKind === "Keyframes"
+
+                Text {
+                    text: "Band name"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                TextField {
+                    id: editBandName
+                    Layout.fillWidth: true
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    SpinBox {
+                        id: editLowHz
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 24000
+                    }
+
+                    SpinBox {
+                        id: editHighHz
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 24000
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                visible: editingLayerKind === "Mask"
+
+                Text {
+                    text: "Key color"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    Rectangle {
+                        Layout.preferredWidth: 42
+                        Layout.preferredHeight: 34
+                        radius: 6
+                        color: editKeyColor.text
+                        border.color: Theme.strokeStrong
+                    }
+
+                    TextField {
+                        id: editKeyColor
+                        Layout.fillWidth: true
+                        color: Theme.text
+                        font.family: Theme.monoFamily
+                    }
+                }
+
+                Text {
+                    text: "Tolerance " + editTolerance.value.toFixed(2)
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+
+                Slider {
+                    id: editTolerance
+                    Layout.fillWidth: true
+                    from: 0.02
+                    to: 0.8
+                    value: 0.28
+                }
+
+                CheckBox {
+                    id: editInverted
+                    text: "Invert result"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+            }
+        }
+    }
+
+    Loader {
+        id: videoAnalysisLoader
+        active: false
+        sourceComponent: VideoAnalysisDialog {
+            videoName: window.analysisVisualName
+            videoPath: window.analysisVisualPath
+            x: Math.round((window.width - width) / 2)
+            y: Math.round((window.height - height) / 2)
+            onMaskLayerCreated: function(layerJson) {
+                window.addMaskLayer(layerJson)
+            }
+            onClosed: videoAnalysisLoader.active = false
         }
     }
 
@@ -325,7 +554,7 @@ ApplicationWindow {
                 font.family: "Segoe MDL2 Assets"
                 ToolTip.visible: hovered
                 ToolTip.text: "Analyze audio"
-                onClicked: analysisDialog.open()
+                onClicked: window.openAudioAnalysis()
             }
 
             ToolButton {
@@ -333,7 +562,7 @@ ApplicationWindow {
                 font.family: "Segoe MDL2 Assets"
                 ToolTip.visible: hovered
                 ToolTip.text: "Analyze visual"
-                onClicked: videoAnalysisDialog.open()
+                onClicked: window.openVideoAnalysis()
             }
 
             Text {
@@ -468,6 +697,12 @@ ApplicationWindow {
                         window.timelineDuration = Math.max(15000, previewPanel.currentDuration)
                     }
                     onPlaybackToggled: previewPanel.toggleCompositionPlayback()
+                    onGeneratedLayerEditRequested: function(kind, id) {
+                        window.openGeneratedLayerEditor(kind, id)
+                    }
+                    onGeneratedLayerDeleteRequested: function(kind, id) {
+                        window.deleteGeneratedLayer(kind, id)
+                    }
                     SplitView.fillWidth: true
                     SplitView.minimumHeight: 210
                     SplitView.preferredHeight: 290

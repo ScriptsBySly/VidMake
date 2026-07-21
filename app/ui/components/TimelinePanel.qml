@@ -14,6 +14,8 @@ Panel {
     signal assetSelected(string name, string kind, string path)
     signal seekRequested(int milliseconds)
     signal playbackToggled()
+    signal generatedLayerEditRequested(string kind, string id)
+    signal generatedLayerDeleteRequested(string kind, string id)
     property var cachedAssets: []
     property var cachedKeyframeLayers: []
     property var cachedMaskLayers: []
@@ -36,6 +38,13 @@ Panel {
         return kind === "Audio" ? "#b45309" : "#2b5361"
     }
 
+    function rowLabel(kind, depth) {
+        if (depth > 0) {
+            return kind
+        }
+        return kind === "Audio" ? "Audio Source" : "Visual Source"
+    }
+
     function clipBorder(kind, selected) {
         if (selected) {
             return kind === "Audio" ? "#7c2d12" : Theme.accent
@@ -51,31 +60,95 @@ Panel {
 
     function rebuildTimeline() {
         timelineModel.clear()
+        var groupedKeyframes = {}
+        var groupedMasks = {}
+        var usedKeyframes = {}
+        var usedMasks = {}
+
+        for (var keyframeIndex = 0; keyframeIndex < cachedKeyframeLayers.length; keyframeIndex++) {
+            var keyframeLayer = cachedKeyframeLayers[keyframeIndex]
+            var audioPath = keyframeLayer.source_audio_path || ""
+            if (!groupedKeyframes[audioPath]) {
+                groupedKeyframes[audioPath] = []
+            }
+            groupedKeyframes[audioPath].push(keyframeLayer)
+        }
+
+        for (var maskIndex = 0; maskIndex < cachedMaskLayers.length; maskIndex++) {
+            var maskLayer = cachedMaskLayers[maskIndex]
+            var visualPath = maskLayer.source_video_path || ""
+            if (!groupedMasks[visualPath]) {
+                groupedMasks[visualPath] = []
+            }
+            groupedMasks[visualPath].push(maskLayer)
+        }
+
         for (var i = 0; i < cachedAssets.length; i++) {
             var asset = cachedAssets[i]
             timelineModel.append({
                 "name": asset.name,
                 "kind": asset.kind,
                 "path": asset.path,
-                "start": 0
+                "start": 0,
+                "depth": 0,
+                "selectable": true
             })
+
+            var keyframeChildren = groupedKeyframes[asset.path] || []
+            for (var j = 0; j < keyframeChildren.length; j++) {
+                var childKeyframes = keyframeChildren[j]
+                usedKeyframes[childKeyframes.id] = true
+                timelineModel.append({
+                    "name": childKeyframes.name + " (" + childKeyframes.keyframes.length + ")",
+                    "kind": "Keyframes",
+                    "path": childKeyframes.id,
+                    "start": 0,
+                    "depth": 1,
+                    "selectable": false
+                })
+            }
+
+            var maskChildren = groupedMasks[asset.path] || []
+            for (var k = 0; k < maskChildren.length; k++) {
+                var childMask = maskChildren[k]
+                usedMasks[childMask.id] = true
+                timelineModel.append({
+                    "name": childMask.name,
+                    "kind": "Mask",
+                    "path": childMask.id,
+                    "start": 0,
+                    "depth": 1,
+                    "selectable": false
+                })
+            }
         }
-        for (var j = 0; j < cachedKeyframeLayers.length; j++) {
-            var layer = cachedKeyframeLayers[j]
+
+        for (var orphanKeyframeIndex = 0; orphanKeyframeIndex < cachedKeyframeLayers.length; orphanKeyframeIndex++) {
+            var layer = cachedKeyframeLayers[orphanKeyframeIndex]
+            if (usedKeyframes[layer.id]) {
+                continue
+            }
             timelineModel.append({
                 "name": layer.name + " (" + layer.keyframes.length + ")",
                 "kind": "Keyframes",
                 "path": layer.id,
-                "start": 0
+                "start": 0,
+                "depth": 0,
+                "selectable": false
             })
         }
-        for (var k = 0; k < cachedMaskLayers.length; k++) {
-            var mask = cachedMaskLayers[k]
+        for (var orphanMaskIndex = 0; orphanMaskIndex < cachedMaskLayers.length; orphanMaskIndex++) {
+            var mask = cachedMaskLayers[orphanMaskIndex]
+            if (usedMasks[mask.id]) {
+                continue
+            }
             timelineModel.append({
                 "name": mask.name,
                 "kind": "Mask",
                 "path": mask.id,
-                "start": 0
+                "start": 0,
+                "depth": 0,
+                "selectable": false
             })
         }
     }
@@ -92,6 +165,13 @@ Panel {
 
     function loadMaskLayers(layers) {
         cachedMaskLayers = layers
+        rebuildTimeline()
+    }
+
+    function loadTimelineData(assets, keyframeLayers, maskLayerItems) {
+        cachedAssets = assets
+        cachedKeyframeLayers = keyframeLayers
+        cachedMaskLayers = maskLayerItems
         rebuildTimeline()
     }
 
@@ -215,6 +295,7 @@ Panel {
                 anchors.margins: 1
                 clip: true
                 spacing: 0
+                interactive: false
                 model: timelineModel
 
                 delegate: Rectangle {
@@ -222,10 +303,12 @@ Panel {
                     required property string kind
                     required property string path
                     required property int start
+                    required property int depth
+                    required property bool selectable
 
                     width: trackList.width
                     height: 44
-                    color: "transparent"
+                    color: depth > 0 ? "#fafafa" : "transparent"
                     border.color: Theme.stroke
 
                     Rectangle {
@@ -239,8 +322,8 @@ Panel {
                             anchors.left: parent.left
                             anchors.leftMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            text: kind
-                            color: Theme.text
+                            text: root.rowLabel(kind, depth)
+                            color: depth > 0 ? Theme.subtleText : Theme.text
                             font.family: Theme.fontFamily
                             font.pixelSize: 12
                             elide: Text.ElideRight
@@ -248,22 +331,11 @@ Panel {
                         }
                     }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: false
-                        acceptedButtons: Qt.LeftButton
-                        onClicked: function(mouse) {
-                            if (mouse.x > 112) {
-                                root.seekRequested(Math.round(root.timelineDuration * (mouse.x - 122) / Math.max(1, parent.width - 142)))
-                            }
-                        }
-                    }
-
                     Rectangle {
                         id: clip
-                        x: 122 + Math.round((parent.width - 142) * start / root.timelineDuration)
+                        x: 122 + depth * 28 + Math.round((parent.width - 142 - depth * 28) * start / root.timelineDuration)
                         y: 8
-                        width: Math.max(88, parent.width - 142)
+                        width: Math.max(88, parent.width - 142 - depth * 28)
                         height: parent.height - 16
                         radius: 6
                         z: 2
@@ -272,26 +344,49 @@ Panel {
                         border.color: root.clipBorder(kind, path === root.selectedAssetPath)
                         border.width: path === root.selectedAssetPath ? 2 : 1
 
-                        Text {
-                            anchors.left: parent.left
+                        RowLayout {
+                            anchors.fill: parent
                             anchors.leftMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: name
-                            color: "white"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                            width: parent.width - 20
+                            anchors.rightMargin: 4
+                            spacing: 4
+                            z: 2
+
+                            Text {
+                                text: name
+                                color: "white"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+
+                            IconButton {
+                                visible: !selectable
+                                iconText: "\uE70F"
+                                tooltip: "Edit layer"
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 24
+                                onClicked: root.generatedLayerEditRequested(kind, path)
+                            }
+
+                            IconButton {
+                                visible: !selectable
+                                iconText: "\uE74D"
+                                tooltip: "Delete layer"
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 24
+                                onClicked: root.generatedLayerDeleteRequested(kind, path)
+                            }
                         }
 
                         MouseArea {
                             anchors.fill: parent
+                            enabled: selectable
+                            z: 1
                             hoverEnabled: false
                             acceptedButtons: Qt.LeftButton
                             onClicked: {
-                                if (kind !== "Keyframes" && kind !== "Mask") {
-                                    root.assetSelected(name, kind, path)
-                                }
+                                root.assetSelected(name, kind, path)
                             }
                         }
                     }
